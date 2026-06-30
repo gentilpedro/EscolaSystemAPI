@@ -80,9 +80,12 @@ public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbCo
         if (user is null)
             return Result<bool>.NotFound("Usuário não encontrado.");
 
-        // Only the user themselves or an Admin can change the password
-        var isAdmin = user.Role?.Name == "Admin";
-        if (user.Id != requestingUserId && !isAdmin)
+        var requestingUser = await context.Users
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.Id == requestingUserId, cancellationToken);
+
+        var requestingIsAdmin = requestingUser?.Role?.Name is "Admin" or "Director";
+        if (user.Id != requestingUserId && !requestingIsAdmin)
             return Result<bool>.Forbidden("Sem permissão para alterar a senha deste usuário.");
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);

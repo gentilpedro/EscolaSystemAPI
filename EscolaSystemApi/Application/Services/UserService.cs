@@ -8,7 +8,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EscolaSystemApi.Application.Services;
 
-public class UserService(IUnitOfWork unitOfWork, AppDbContext context, ICurrentUserService currentUser) : IUserService
+public class UserService(
+    IUnitOfWork unitOfWork,
+    AppDbContext context,
+    ICurrentUserService currentUser,
+    ICpfEncryptionService cpfEncryption) : IUserService
 {
     public async Task<Result<PagedResult<UserListDto>>> GetAllAsync(PagedQuery query, CancellationToken cancellationToken = default)
     {
@@ -115,7 +119,8 @@ public class UserService(IUnitOfWork unitOfWork, AppDbContext context, ICurrentU
             RoleId = dto.RoleId,
             SchoolId = dto.SchoolId,
             StudentId = dto.StudentId,
-            Cpf = dto.Cpf,
+            CpfEncrypted = dto.Cpf is null ? null : cpfEncryption.Encrypt(dto.Cpf),
+            CpfHash = dto.Cpf is null ? null : cpfEncryption.Hash(dto.Cpf),
             Phone = dto.Phone
         };
 
@@ -151,7 +156,8 @@ public class UserService(IUnitOfWork unitOfWork, AppDbContext context, ICurrentU
         user.RoleId = dto.RoleId;
         user.SchoolId = dto.SchoolId;
         user.IsActive = dto.IsActive;
-        user.Cpf = dto.Cpf;
+        user.CpfEncrypted = dto.Cpf is null ? null : cpfEncryption.Encrypt(dto.Cpf);
+        user.CpfHash = dto.Cpf is null ? null : cpfEncryption.Hash(dto.Cpf);
         user.Phone = dto.Phone;
 
         unitOfWork.Repository<User>().Update(user);
@@ -309,7 +315,10 @@ public class UserService(IUnitOfWork unitOfWork, AppDbContext context, ICurrentU
         return Result<bool>.NoContent();
     }
 
-    private static UserListDto ToDto(User u) =>
-        new(u.Id, u.Name, u.Email, u.Role?.Name ?? string.Empty,
-            u.SchoolId, u.School?.Name, u.IsActive, u.CreatedAt, u.Cpf, u.Phone);
+    private UserListDto ToDto(User u)
+    {
+        var cpf = u.CpfEncrypted is not null ? cpfEncryption.Decrypt(u.CpfEncrypted) : null;
+        return new(u.Id, u.Name, u.Email, u.Role?.Name ?? string.Empty,
+            u.SchoolId, u.School?.Name, u.IsActive, u.CreatedAt, cpf, u.Phone);
+    }
 }

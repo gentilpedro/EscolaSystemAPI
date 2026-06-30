@@ -22,6 +22,9 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasForeignKey(x => x.RoleId)
             .OnDelete(DeleteBehavior.Restrict);
         builder.Property(x => x.Cpf).HasMaxLength(14);
+        builder.Property(x => x.CpfHash).HasMaxLength(64);
+        builder.Property(x => x.CpfEncrypted).HasMaxLength(512);
+        builder.HasIndex(x => x.CpfHash).HasDatabaseName("IX_Users_CpfHash");
         builder.Property(x => x.Phone).HasMaxLength(20);
         builder.HasOne(x => x.Student)
             .WithOne(x => x.UserAccount)
