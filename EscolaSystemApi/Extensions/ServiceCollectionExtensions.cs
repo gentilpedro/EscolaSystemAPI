@@ -1,3 +1,7 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using System.Threading.RateLimiting;
 using EscolaSystemApi.Application.Interfaces;
 using EscolaSystemApi.Application.Interfaces.Repositories;
 using EscolaSystemApi.Application.Services;
@@ -9,8 +13,6 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
-using System.Text;
-using System.Threading.RateLimiting;
 
 namespace EscolaSystemApi.Extensions;
 
@@ -28,6 +30,8 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
+        services.AddSingleton<ITokenBlacklistService, InMemoryTokenBlacklistService>();
+        services.AddScoped<ICpfEncryptionService, CpfEncryptionService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IJwtService, JwtService>();
@@ -61,6 +65,21 @@ public static class ServiceCollectionExtensions
                     IssuerSigningKey = new SymmetricSecurityKey(key),
                     ClockSkew = TimeSpan.Zero
                 };
+
+                options.Events = new JwtBearerEvents
+                {
+                    OnTokenValidated = async ctx =>
+                    {
+                        var jti = ctx.Principal?.FindFirstValue(JwtRegisteredClaimNames.Jti);
+                        if (jti is not null)
+                        {
+                            var blacklist = ctx.HttpContext.RequestServices
+                                .GetRequiredService<ITokenBlacklistService>();
+                            if (await blacklist.IsRevokedAsync(jti))
+                                ctx.Fail("Token revogado.");
+                        }
+                    }
+                };
             });
 
         services.AddAuthorization();
@@ -68,9 +87,14 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    public static IServiceCollection AddCorsPolicy(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddCorsPolicy(
+        this IServiceCollection services, IConfiguration configuration, IWebHostEnvironment env)
     {
-        var origins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? ["http://localhost:3000", "http://localhost:5173"];
+        var origins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+            ?? ["http://localhost:3000", "http://localhost:5173"];
+
+        if (!env.IsDevelopment())
+            origins = origins.Where(o => o.StartsWith("https://", StringComparison.OrdinalIgnoreCase)).ToArray();
 
         services.AddCors(options =>
         {

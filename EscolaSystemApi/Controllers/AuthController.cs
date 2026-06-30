@@ -1,3 +1,5 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using EscolaSystemApi.Application.DTOs.Auth;
 using EscolaSystemApi.Application.Interfaces;
 using EscolaSystemApi.Application.Validators.Auth;
@@ -9,7 +11,7 @@ using Microsoft.AspNetCore.RateLimiting;
 namespace EscolaSystemApi.Controllers;
 
 [Route("api/auth")]
-public class AuthController(IAuthService authService) : BaseApiController
+public class AuthController(IAuthService authService, ITokenBlacklistService tokenBlacklist) : BaseApiController
 {
     [HttpPost("login")]
     [AllowAnonymous]
@@ -44,8 +46,14 @@ public class AuthController(IAuthService authService) : BaseApiController
 
     [HttpPost("logout")]
     [Authorize]
-    public IActionResult Logout()
-        => HandleResult(Result<bool>.Success(true));
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken)
+    {
+        var jti = User.FindFirstValue(JwtRegisteredClaimNames.Jti);
+        if (jti is not null)
+            await tokenBlacklist.RevokeAsync(jti, TimeSpan.FromMinutes(60));
+
+        return NoContent();
+    }
 
     [HttpPost("reset-password")]
     [Authorize]

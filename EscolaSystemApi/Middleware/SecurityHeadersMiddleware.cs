@@ -8,9 +8,11 @@ public class SecurityHeadersMiddleware(RequestDelegate next)
 
         headers["X-Content-Type-Options"] = "nosniff";
         headers["X-Frame-Options"] = "DENY";
-        headers["X-XSS-Protection"] = "1; mode=block";
         headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
         headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+        headers["Content-Security-Policy"] =
+            "default-src 'none'; script-src 'self'; connect-src 'self'; " +
+            "img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none';";
 
         if (!context.Request.IsHttps)
             headers["Strict-Transport-Security"] = "max-age=0";
