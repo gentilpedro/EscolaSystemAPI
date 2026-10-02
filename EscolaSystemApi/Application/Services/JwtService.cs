@@ -47,8 +47,26 @@ public class JwtService(IConfiguration configuration) : IJwtService
         var handler = new JwtSecurityTokenHandler();
         if (!handler.CanReadToken(token)) return null;
 
-        var jwt = handler.ReadJwtToken(token);
-        var sub = jwt.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Sub)?.Value;
-        return Guid.TryParse(sub, out var id) ? id : null;
+        try
+        {
+            var principal = handler.ValidateToken(token, new TokenValidationParameters
+            {
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_key)),
+                ValidateIssuer = true,
+                ValidIssuer = _issuer,
+                ValidateAudience = true,
+                ValidAudience = _audience,
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.Zero
+            }, out _);
+
+            var sub = principal.FindFirstValue(JwtRegisteredClaimNames.Sub);
+            return Guid.TryParse(sub, out var id) ? id : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
