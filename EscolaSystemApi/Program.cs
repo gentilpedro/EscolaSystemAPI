@@ -1,3 +1,4 @@
+using EscolaSystemApi.Application.Interfaces;
 using EscolaSystemApi.Extensions;
 using EscolaSystemApi.Infrastructure.Data;
 using EscolaSystemApi.Middleware;
@@ -32,7 +33,7 @@ try
     builder.Services.AddInfrastructure(builder.Configuration);
     builder.Services.AddApplicationServices();
     builder.Services.AddJwtAuthentication(builder.Configuration);
-    builder.Services.AddCorsPolicy(builder.Configuration);
+    builder.Services.AddCorsPolicy(builder.Configuration, builder.Environment);
     builder.Services.AddRateLimiting();
     builder.Services.AddOpenApiWithScalar();
 
@@ -45,6 +46,24 @@ try
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await db.Database.MigrateAsync();
         await DbSeeder.SeedAsync(db);
+
+        var cpfService = scope.ServiceProvider.GetRequiredService<ICpfEncryptionService>();
+        var legacyUsers = await db.Users
+            .Where(u => u.Cpf != null && u.CpfEncrypted == null)
+            .ToListAsync();
+
+        foreach (var u in legacyUsers)
+        {
+            u.CpfEncrypted = cpfService.Encrypt(u.Cpf!);
+            u.CpfHash = cpfService.Hash(u.Cpf!);
+            u.Cpf = null;
+        }
+
+        if (legacyUsers.Count > 0)
+        {
+            await db.SaveChangesAsync();
+            Log.Information("CPF migration: {Count} registro(s) criptografado(s)", legacyUsers.Count);
+        }
     }
 
     app.UseMiddleware<ExceptionHandlingMiddleware>();

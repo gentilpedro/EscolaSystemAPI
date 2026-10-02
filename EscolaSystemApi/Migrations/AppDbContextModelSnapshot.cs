@@ -429,6 +429,14 @@ namespace EscolaSystemApi.Migrations
                         .HasMaxLength(14)
                         .HasColumnType("character varying(14)");
 
+                    b.Property<string>("CpfEncrypted")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("CpfHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -466,6 +474,9 @@ namespace EscolaSystemApi.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CpfHash")
+                        .HasDatabaseName("IX_Users_CpfHash");
 
                     b.HasIndex("Email")
                         .IsUnique();
