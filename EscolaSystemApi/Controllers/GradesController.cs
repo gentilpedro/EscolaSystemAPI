@@ -24,7 +24,7 @@ public class GradesController(IGradeService gradeService) : BaseApiController
     {
         var validation = await new CreateGradeValidator().ValidateAsync(dto, cancellationToken);
         if (!validation.IsValid)
-            return BadRequest(new { errors = validation.Errors.Select(e => e.ErrorMessage) });
+            return ValidationFailed(validation);
 
         return HandleResult(await gradeService.CreateAsync(dto, cancellationToken));
     }
@@ -32,7 +32,13 @@ public class GradesController(IGradeService gradeService) : BaseApiController
     [HttpPut("{id:guid}")]
     [Authorize(Roles = "Admin,Teacher,Director")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateGradeDto dto, CancellationToken cancellationToken)
-        => HandleResult(await gradeService.UpdateAsync(id, dto, cancellationToken));
+    {
+        var validation = await new UpdateGradeValidator().ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
+            return ValidationFailed(validation);
+
+        return HandleResult(await gradeService.UpdateAsync(id, dto, cancellationToken));
+    }
 
     [HttpDelete("{id:guid}")]
     [Authorize(Roles = "Admin,Teacher,Director")]

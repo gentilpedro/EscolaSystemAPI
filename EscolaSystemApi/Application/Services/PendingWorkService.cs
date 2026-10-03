@@ -10,27 +10,21 @@ namespace EscolaSystemApi.Application.Services;
 
 public class PendingWorkService(IUnitOfWork unitOfWork, AppDbContext context, ICurrentUserService currentUser) : IPendingWorkService
 {
-    public async Task<Result<PagedResult<PendingWorkDto>>> GetAllAsync(PagedQuery query, CancellationToken cancellationToken = default)
+    public async Task<Result<PagedResult<PendingWorkDto>>> GetAllAsync(PagedQuery query, Guid? classId = null, Guid? studentId = null, CancellationToken cancellationToken = default)
     {
-        var baseQuery = context.PendingWorks.AsNoTracking()
-            .Include(p => p.Student)
-            .Include(p => p.Class).ThenInclude(c => c.School);
+        var filtered = ScopedWorks();
 
-        var filtered = currentUser.Role switch
-        {
-            "Admin" => baseQuery,
-            "Director" => baseQuery.Where(p => p.Class.SchoolId == currentUser.SchoolId),
-            "Teacher" => baseQuery.Where(p => context.TeacherClasses
-                .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == p.ClassId)),
-            "Student" => baseQuery.Where(p => p.StudentId == currentUser.StudentId),
-            "Parent" => baseQuery.Where(p => context.ParentStudents
-                .Any(ps => ps.ParentId == currentUser.UserId && ps.StudentId == p.StudentId)),
-            _ => baseQuery.Where(_ => false)
-        };
+        if (classId.HasValue)
+            filtered = filtered.Where(p => p.ClassId == classId.Value);
+        if (studentId.HasValue)
+            filtered = filtered.Where(p => p.StudentId == studentId.Value);
 
         var totalCount = await filtered.CountAsync(cancellationToken);
         var totalPages = (int)Math.Ceiling(totalCount / (double)query.PageSize);
-        var data = await filtered.Skip(query.Skip).Take(query.Take).ToListAsync(cancellationToken);
+        var data = await filtered
+            .OrderBy(p => p.IsDelivered).ThenBy(p => p.DueDate)
+            .Skip(query.Skip).Take(query.Take)
+            .ToListAsync(cancellationToken);
 
         return Result<PagedResult<PendingWorkDto>>.Success(
             new PagedResult<PendingWorkDto>(data.Select(ToDto), query.Page, query.PageSize, totalCount, totalPages));
@@ -38,23 +32,8 @@ public class PendingWorkService(IUnitOfWork unitOfWork, AppDbContext context, IC
 
     public async Task<Result<PendingWorkDto>> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var query = context.PendingWorks.AsNoTracking()
-            .Include(p => p.Student)
-            .Include(p => p.Class).ThenInclude(c => c.School);
+        var work = await ScopedWorks().FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
 
-        var filtered = currentUser.Role switch
-        {
-            "Admin" => query,
-            "Director" => query.Where(p => p.Class.SchoolId == currentUser.SchoolId),
-            "Teacher" => query.Where(p => context.TeacherClasses
-                .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == p.ClassId)),
-            "Student" => query.Where(p => p.StudentId == currentUser.StudentId),
-            "Parent" => query.Where(p => context.ParentStudents
-                .Any(ps => ps.ParentId == currentUser.UserId && ps.StudentId == p.StudentId)),
-            _ => query.Where(_ => false)
-        };
-
-        var work = await filtered.FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
         return work is null
             ? Result<PendingWorkDto>.NotFound("Trabalho pendente não encontrado.")
             : Result<PendingWorkDto>.Success(ToDto(work));
@@ -71,12 +50,6 @@ public class PendingWorkService(IUnitOfWork unitOfWork, AppDbContext context, IC
         // Validar se o aluno pertence à turma informada
         if (student.ClassId != dto.ClassId)
             return Result<PendingWorkDto>.BadRequest("Aluno não pertence a esta turma.");
-
-        var classExists = await unitOfWork.Repository<Class>()
-            .ExistsAsync(c => c.Id == dto.ClassId, cancellationToken);
-
-        if (!classExists)
-            return Result<PendingWorkDto>.NotFound("Turma não encontrada.");
 
         if (currentUser.Role == "Teacher")
         {
@@ -101,6 +74,7 @@ public class PendingWorkService(IUnitOfWork unitOfWork, AppDbContext context, IC
 
         await unitOfWork.Repository<PendingWork>().AddAsync(work, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+
         return await GetByIdAsync(work.Id, cancellationToken) is { IsSuccess: true } r
             ? Result<PendingWorkDto>.Created(r.Data!)
             : Result<PendingWorkDto>.BadRequest("Erro ao criar trabalho.");
@@ -108,19 +82,45 @@ public class PendingWorkService(IUnitOfWork unitOfWork, AppDbContext context, IC
 
     public async Task<Result<PendingWorkDto>> MarkAsDeliveredAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var work = await unitOfWork.Repository<PendingWork>().GetByIdAsync(id, cancellationToken);
-        if (work is null)
+        // Busca pelo escopo do usuário: aluno só enxerga (e entrega) os próprios trabalhos
+        var visible = await ScopedWorks().AnyAsync(p => p.Id == id, cancellationToken);
+        if (!visible)
             return Result<PendingWorkDto>.NotFound("Trabalho pendente não encontrado.");
+
+        var work = await context.PendingWorks.FirstAsync(p => p.Id == id, cancellationToken);
 
         if (work.IsDelivered)
             return Result<PendingWorkDto>.BadRequest("Trabalho já foi entregue.");
 
         work.IsDelivered = true;
         work.DeliveredAt = DateTime.UtcNow;
+        work.UpdatedAt = DateTime.UtcNow;
 
         unitOfWork.Repository<PendingWork>().Update(work);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+
         return await GetByIdAsync(id, cancellationToken);
+    }
+
+    private IQueryable<PendingWork> ScopedWorks()
+    {
+        var query = context.PendingWorks.AsNoTracking()
+            .Include(p => p.Student)
+            .Include(p => p.Class);
+
+        return currentUser.Role switch
+        {
+            "Admin" => query,
+            "Director" => query.Where(p => p.Class.SchoolId == currentUser.SchoolId),
+            "Teacher" => query.Where(p => context.TeacherClasses
+                .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == p.ClassId)),
+            "Orientador" => query.Where(p => context.OrientadorClasses
+                .Any(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == p.ClassId)),
+            "Student" => query.Where(p => p.StudentId == currentUser.StudentId),
+            "Parent" => query.Where(p => context.ParentStudents
+                .Any(ps => ps.ParentId == currentUser.UserId && ps.StudentId == p.StudentId)),
+            _ => query.Where(_ => false)
+        };
     }
 
     private static PendingWorkDto ToDto(PendingWork p) =>

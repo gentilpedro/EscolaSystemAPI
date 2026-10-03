@@ -17,6 +17,11 @@ public class DisciplinaryCallConfiguration : IEntityTypeConfiguration<Disciplina
             .HasForeignKey(x => x.StudentId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        builder.HasOne(x => x.CreatedBy)
+            .WithMany()
+            .HasForeignKey(x => x.CreatedById)
+            .OnDelete(DeleteBehavior.SetNull);
+
         builder.HasOne(x => x.ResolvedBy)
             .WithMany()
             .HasForeignKey(x => x.ResolvedById)

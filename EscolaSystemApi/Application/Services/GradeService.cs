@@ -37,7 +37,7 @@ public class GradeService(IUnitOfWork unitOfWork, AppDbContext context, ICurrent
 
         var totalCount = await filtered.CountAsync(cancellationToken);
         var totalPages = (int)Math.Ceiling(totalCount / (double)query.PageSize);
-        var data = await filtered.Skip(query.Skip).Take(query.Take).ToListAsync(cancellationToken);
+        var data = await filtered.OrderBy(g => g.Student.Name).ThenBy(g => g.Subject).Skip(query.Skip).Take(query.Take).ToListAsync(cancellationToken);
 
         return Result<PagedResult<GradeDto>>.Success(
             new PagedResult<GradeDto>(data.Select(ToDto), query.Page, query.PageSize, totalCount, totalPages));
@@ -138,6 +138,7 @@ public class GradeService(IUnitOfWork unitOfWork, AppDbContext context, ICurrent
         grade.Subject = dto.Subject;
         grade.Value = dto.Value;
         grade.Period = dto.Period;
+        grade.UpdatedAt = DateTime.UtcNow;
 
         unitOfWork.Repository<Grade>().Update(grade);
         await unitOfWork.SaveChangesAsync(cancellationToken);

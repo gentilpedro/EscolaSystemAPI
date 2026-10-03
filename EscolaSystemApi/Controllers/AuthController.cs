@@ -21,20 +21,20 @@ public class AuthController(IAuthService authService, ITokenBlacklistService tok
         var validator = new LoginRequestValidator();
         var validation = await validator.ValidateAsync(dto, cancellationToken);
         if (!validation.IsValid)
-            return BadRequest(new { errors = validation.Errors.Select(e => e.ErrorMessage) });
+            return ValidationFailed(validation);
 
         return HandleResult(await authService.LoginAsync(dto, cancellationToken));
     }
 
     [HttpPost("register")]
-    [Authorize(Roles = "Admin,Director")]
+    [Authorize(Roles = "Admin")]
     [EnableRateLimiting("AuthPolicy")]
     public async Task<IActionResult> Register([FromBody] RegisterRequestDto dto, CancellationToken cancellationToken)
     {
         var validator = new RegisterRequestValidator();
         var validation = await validator.ValidateAsync(dto, cancellationToken);
         if (!validation.IsValid)
-            return BadRequest(new { errors = validation.Errors.Select(e => e.ErrorMessage) });
+            return ValidationFailed(validation);
 
         return HandleResult(await authService.RegisterAsync(dto, cancellationToken));
     }
@@ -50,7 +50,16 @@ public class AuthController(IAuthService authService, ITokenBlacklistService tok
     {
         var jti = User.FindFirstValue(JwtRegisteredClaimNames.Jti);
         if (jti is not null)
-            await tokenBlacklist.RevokeAsync(jti, TimeSpan.FromMinutes(60));
+        {
+            // Mantém o token na blacklist apenas até ele expirar naturalmente
+            var exp = User.FindFirstValue(JwtRegisteredClaimNames.Exp);
+            var remaining = long.TryParse(exp, out var expSeconds)
+                ? DateTimeOffset.FromUnixTimeSeconds(expSeconds) - DateTimeOffset.UtcNow
+                : TimeSpan.FromHours(24);
+
+            if (remaining > TimeSpan.Zero)
+                await tokenBlacklist.RevokeAsync(jti, remaining);
+        }
 
         return NoContent();
     }
@@ -63,7 +72,7 @@ public class AuthController(IAuthService authService, ITokenBlacklistService tok
         var validator = new ResetPasswordDtoValidator();
         var validation = await validator.ValidateAsync(dto, cancellationToken);
         if (!validation.IsValid)
-            return BadRequest(new { errors = validation.Errors.Select(e => e.ErrorMessage) });
+            return ValidationFailed(validation);
 
         return HandleResult(await authService.ResetPasswordAsync(dto, CurrentUserId, cancellationToken));
     }

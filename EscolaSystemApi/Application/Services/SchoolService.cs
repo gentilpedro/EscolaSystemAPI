@@ -12,10 +12,13 @@ public class SchoolService(IUnitOfWork unitOfWork, ICurrentUserService currentUs
 {
     public async Task<Result<PagedResult<SchoolDto>>> GetAllAsync(PagedQuery query, CancellationToken cancellationToken = default)
     {
-        if (currentUser.Role == "Director")
+        if (currentUser.Role != "Admin")
         {
+            if (currentUser.SchoolId is null)
+                return Result<PagedResult<SchoolDto>>.Success(new PagedResult<SchoolDto>([], 1, query.PageSize, 0, 0));
+
             var school = await unitOfWork.Repository<School>()
-                .GetByIdAsync(currentUser.SchoolId!.Value, cancellationToken);
+                .GetByIdAsync(currentUser.SchoolId.Value, cancellationToken);
 
             return school is null
                 ? Result<PagedResult<SchoolDto>>.NotFound("Escola não encontrada.")
@@ -29,6 +32,7 @@ public class SchoolService(IUnitOfWork unitOfWork, ICurrentUserService currentUs
         var totalPages = (int)Math.Ceiling(totalCount / (double)query.PageSize);
 
         var schools = await baseQuery
+            .OrderBy(x => x.Name)
             .Skip(query.Skip)
             .Take(query.Take)
             .ToListAsync(cancellationToken);
@@ -39,7 +43,7 @@ public class SchoolService(IUnitOfWork unitOfWork, ICurrentUserService currentUs
 
     public async Task<Result<SchoolDto>> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        if (currentUser.Role == "Director" && currentUser.SchoolId != id)
+        if (currentUser.Role != "Admin" && currentUser.SchoolId != id)
             return Result<SchoolDto>.Forbidden("Você não tem acesso a esta escola.");
 
         var school = await unitOfWork.Repository<School>().GetByIdAsync(id, cancellationToken);
@@ -78,11 +82,18 @@ public class SchoolService(IUnitOfWork unitOfWork, ICurrentUserService currentUs
         if (school is null)
             return Result<SchoolDto>.NotFound("Escola não encontrada.");
 
+        var emailInUse = await context.Schools
+            .AnyAsync(x => x.Email == dto.Email && x.Id != id, cancellationToken);
+
+        if (emailInUse)
+            return Result<SchoolDto>.Conflict("Já existe uma escola com este e-mail.");
+
         school.Name = dto.Name;
         school.Address = dto.Address;
         school.Phone = dto.Phone;
         school.Email = dto.Email;
         school.IsActive = dto.IsActive;
+        school.UpdatedAt = DateTime.UtcNow;
 
         unitOfWork.Repository<School>().Update(school);
         await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -94,6 +105,12 @@ public class SchoolService(IUnitOfWork unitOfWork, ICurrentUserService currentUs
         var school = await unitOfWork.Repository<School>().GetByIdAsync(id, cancellationToken);
         if (school is null)
             return Result<bool>.NotFound("Escola não encontrada.");
+
+        var hasDependents = await context.Classes.AnyAsync(c => c.SchoolId == id, cancellationToken)
+                            || await context.Users.AnyAsync(u => u.SchoolId == id, cancellationToken);
+
+        if (hasDependents)
+            return Result<bool>.Conflict("A escola possui turmas ou usuários vinculados. Desative-a em vez de excluir.");
 
         unitOfWork.Repository<School>().Remove(school);
         await unitOfWork.SaveChangesAsync(cancellationToken);

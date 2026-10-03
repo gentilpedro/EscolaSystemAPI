@@ -1,5 +1,6 @@
 ﻿using EscolaSystemApi.Application.DTOs.Users;
 using EscolaSystemApi.Application.Interfaces;
+using EscolaSystemApi.Application.Validators.Users;
 using EscolaSystemApi.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -11,8 +12,8 @@ namespace EscolaSystemApi.Controllers;
 public class UsersController(IUserService userService) : BaseApiController
 {
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] PagedQuery query, CancellationToken cancellationToken)
-        => HandleResult(await userService.GetAllAsync(query, cancellationToken));
+    public async Task<IActionResult> GetAll([FromQuery] PagedQuery query, [FromQuery] Guid? schoolId, [FromQuery] int? roleId, CancellationToken cancellationToken)
+        => HandleResult(await userService.GetAllAsync(query, schoolId, roleId, cancellationToken));
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
@@ -20,11 +21,23 @@ public class UsersController(IUserService userService) : BaseApiController
 
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateUserDto dto, CancellationToken cancellationToken)
-        => HandleResult(await userService.CreateAsync(dto, cancellationToken));
+    {
+        var validation = await new CreateUserValidator().ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
+            return ValidationFailed(validation);
+
+        return HandleResult(await userService.CreateAsync(dto, cancellationToken));
+    }
 
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateUserDto dto, CancellationToken cancellationToken)
-        => HandleResult(await userService.UpdateAsync(id, dto, cancellationToken));
+    {
+        var validation = await new UpdateUserValidator().ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
+            return ValidationFailed(validation);
+
+        return HandleResult(await userService.UpdateAsync(id, dto, cancellationToken));
+    }
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)

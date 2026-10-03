@@ -1,4 +1,4 @@
-﻿namespace EscolaSystemApi.Application.DTOs.Users;
+namespace EscolaSystemApi.Application.DTOs.Users;
 
 public sealed record UpdateUserDto(
     string Name,
@@ -7,5 +7,6 @@ public sealed record UpdateUserDto(
     Guid? SchoolId,
     bool IsActive,
     string? Cpf = null,
-    string? Phone = null
+    string? Phone = null,
+    Guid? StudentId = null
 );

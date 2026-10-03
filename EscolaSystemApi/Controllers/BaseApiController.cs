@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using EscolaSystemApi.Common;
+using FluentValidation.Results;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EscolaSystemApi.Controllers;
@@ -13,16 +14,18 @@ public abstract class BaseApiController : ControllerBase
             ? id
             : Guid.Empty;
 
+    // "message" acompanha "error" para que o front exiba o motivo da falha
     protected IActionResult HandleResult<T>(Result<T> result) => result.StatusCode switch
     {
         200 => Ok(result.Data),
         201 => Created(string.Empty, result.Data),
         204 => NoContent(),
-        400 => BadRequest(new { error = result.Error }),
-        401 => Unauthorized(new { error = result.Error }),
-        403 => Forbid(),
-        404 => NotFound(new { error = result.Error }),
-        409 => Conflict(new { error = result.Error }),
-        _ => StatusCode(result.StatusCode, new { error = result.Error })
+        _ => StatusCode(result.StatusCode, new { error = result.Error, message = result.Error })
     };
+
+    protected IActionResult ValidationFailed(ValidationResult validation)
+    {
+        var errors = validation.Errors.Select(e => e.ErrorMessage).ToList();
+        return BadRequest(new { error = errors.First(), message = string.Join(" ", errors), errors });
+    }
 }

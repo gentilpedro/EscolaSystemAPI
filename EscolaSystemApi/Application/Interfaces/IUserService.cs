@@ -1,11 +1,11 @@
-﻿using EscolaSystemApi.Application.DTOs.Users;
+using EscolaSystemApi.Application.DTOs.Users;
 using EscolaSystemApi.Common;
 
 namespace EscolaSystemApi.Application.Interfaces;
 
 public interface IUserService
 {
-    Task<Result<PagedResult<UserListDto>>> GetAllAsync(PagedQuery query, CancellationToken cancellationToken = default);
+    Task<Result<PagedResult<UserListDto>>> GetAllAsync(PagedQuery query, Guid? schoolId = null, int? roleId = null, CancellationToken cancellationToken = default);
     Task<Result<UserListDto>> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Result<UserListDto>> CreateAsync(CreateUserDto dto, CancellationToken cancellationToken = default);
     Task<Result<UserListDto>> UpdateAsync(Guid id, UpdateUserDto dto, CancellationToken cancellationToken = default);
