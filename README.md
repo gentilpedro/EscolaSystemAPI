@@ -47,7 +47,7 @@ Configurações opcionais:
 | Chave | Padrão | Descrição |
 |---|---|---|
 | `Jwt:ExpirationInMinutes` | `60` | Validade do token |
-| `RateLimiting:AuthPermitLimit` | `5` | Tentativas de login/reset por IP a cada 15 min |
+| `RateLimiting:AuthPermitLimit` | `30` | Tentativas de login/reset por IP a cada 15 min |
 | `Cors:AllowedOrigins` | `localhost:3000`, `localhost:5173` | Origens do front (fora de Development só `https://`) |
 
 ---
@@ -239,7 +239,10 @@ Erros de validação (`400`) incluem também `errors: string[]`. Erros internos 
 | Política | Limite |
 |---|---|
 | Global | 200 req / minuto por IP |
-| Login, register e reset de senha | 5 req / 15 minutos **por IP** (configurável) |
+| Login, register e reset de senha | 30 req / 15 minutos **por IP** (configurável) |
+| Senha errada na mesma conta | 5 erros seguidos bloqueiam a conta por 15 minutos (429) |
+
+A cada requisição autenticada a API confere se o usuário continua ativo, com o mesmo perfil e a mesma escola, e se a escola está ativa. Se algo mudou, o token deixa de valer (401) e é preciso logar de novo.
 
 ---
 

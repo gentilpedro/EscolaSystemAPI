@@ -26,6 +26,7 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(x => x.CpfEncrypted).HasMaxLength(512);
         builder.HasIndex(x => x.CpfHash).HasDatabaseName("IX_Users_CpfHash");
         builder.Property(x => x.Phone).HasMaxLength(20);
+        builder.Property(x => x.FailedLoginAttempts).HasDefaultValue(0);
         builder.HasOne(x => x.Student)
             .WithOne(x => x.UserAccount)
             .HasForeignKey<User>(x => x.StudentId)

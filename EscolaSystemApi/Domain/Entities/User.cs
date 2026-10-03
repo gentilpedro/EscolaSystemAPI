@@ -16,6 +16,8 @@ public class User : BaseEntity
     public string? CpfEncrypted { get; set; }
     public string? Phone { get; set; }
     public bool IsActive { get; set; } = true;
+    public int FailedLoginAttempts { get; set; }
+    public DateTime? LockoutEndsAt { get; set; }
     public ICollection<TeacherClass> TeacherClasses { get; set; } = [];
     public ICollection<ParentStudent> ParentStudents { get; set; } = [];
     public ICollection<OrientadorClass> OrientadorClasses { get; set; } = [];

@@ -33,6 +33,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ITokenBlacklistService, InMemoryTokenBlacklistService>();
         services.AddScoped<ICpfEncryptionService, CpfEncryptionService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
+        services.AddScoped<ISessionValidator, SessionValidator>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IJwtService, JwtService>();
         services.AddScoped<IAuthService, AuthService>();
@@ -77,8 +78,22 @@ public static class ServiceCollectionExtensions
                             var blacklist = ctx.HttpContext.RequestServices
                                 .GetRequiredService<ITokenBlacklistService>();
                             if (await blacklist.IsRevokedAsync(jti))
+                            {
                                 ctx.Fail("Token revogado.");
+                                return;
+                            }
                         }
+
+                        var sub = ctx.Principal?.FindFirstValue(ClaimTypes.NameIdentifier)
+                                  ?? ctx.Principal?.FindFirstValue(JwtRegisteredClaimNames.Sub);
+                        var role = ctx.Principal?.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
+                        var schoolClaim = ctx.Principal?.FindFirstValue("schoolId");
+                        Guid? schoolId = Guid.TryParse(schoolClaim, out var parsedSchool) ? parsedSchool : null;
+
+                        var sessionValidator = ctx.HttpContext.RequestServices.GetRequiredService<ISessionValidator>();
+                        if (!Guid.TryParse(sub, out var userId)
+                            || !await sessionValidator.IsValidAsync(userId, role, schoolId, ctx.HttpContext.RequestAborted))
+                            ctx.Fail("Sessão não corresponde mais ao usuário.");
                     }
                 };
             });
@@ -111,11 +126,13 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddRateLimiting(this IServiceCollection services, IConfiguration configuration)
     {
-        var authPermitLimit = configuration.GetValue("RateLimiting:AuthPermitLimit", 5);
+        // Limite por IP alto o bastante para uma escola inteira atrás de um único IP;
+        // a proteção de senha fica no bloqueio por conta (AuthService)
+        var authPermitLimit = configuration.GetValue("RateLimiting:AuthPermitLimit", 30);
 
         services.AddRateLimiter(options =>
         {
-            // Strict policy for auth routes: 5 attempts per 15 minutes per IP
+            // Auth routes: attempts per 15 minutes per IP
             // (particionado por IP; um limiter único bloquearia a escola inteira após 5 logins)
             options.AddPolicy("AuthPolicy", ctx =>
                 RateLimitPartition.GetFixedWindowLimiter(
@@ -145,7 +162,7 @@ public static class ServiceCollectionExtensions
                 context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
                 context.HttpContext.Response.ContentType = "application/json";
                 await context.HttpContext.Response.WriteAsync(
-                    """{"error":"Muitas requisições. Aguarde e tente novamente."}""", token);
+                    """{"error":"Muitas requisições. Aguarde e tente novamente.","message":"Muitas requisições. Aguarde e tente novamente."}""", token);
             };
         });
 
