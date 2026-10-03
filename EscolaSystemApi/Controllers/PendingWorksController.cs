@@ -12,8 +12,8 @@ namespace EscolaSystemApi.Controllers;
 public class PendingWorksController(IPendingWorkService pendingWorkService) : BaseApiController
 {
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] PagedQuery query, CancellationToken cancellationToken)
-        => HandleResult(await pendingWorkService.GetAllAsync(query, cancellationToken));
+    public async Task<IActionResult> GetAll([FromQuery] PagedQuery query, [FromQuery] Guid? classId, [FromQuery] Guid? studentId, CancellationToken cancellationToken)
+        => HandleResult(await pendingWorkService.GetAllAsync(query, classId, studentId, cancellationToken));
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
@@ -25,7 +25,7 @@ public class PendingWorksController(IPendingWorkService pendingWorkService) : Ba
     {
         var validation = await new CreatePendingWorkValidator().ValidateAsync(dto, cancellationToken);
         if (!validation.IsValid)
-            return BadRequest(new { errors = validation.Errors.Select(e => e.ErrorMessage) });
+            return ValidationFailed(validation);
 
         return HandleResult(await pendingWorkService.CreateAsync(dto, cancellationToken));
     }

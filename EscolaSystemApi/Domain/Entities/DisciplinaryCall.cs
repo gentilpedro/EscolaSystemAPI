@@ -8,6 +8,8 @@ public class DisciplinaryCall : BaseEntity
     public Student Student { get; set; } = null!;
     public string Description { get; set; } = string.Empty;
     public DisciplinaryCallStatus Status { get; set; } = DisciplinaryCallStatus.Pending;
+    public Guid? CreatedById { get; set; }
+    public User? CreatedBy { get; set; }
     public Guid? ResolvedById { get; set; }
     public User? ResolvedBy { get; set; }
     public DateTime? ResolvedAt { get; set; }

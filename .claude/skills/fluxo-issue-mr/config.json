@@ -1,0 +1,12 @@
+{
+  "labels_tipo": {
+    "feature": "enhancement",
+    "fix": "bug",
+    "hotfix": "bug"
+  },
+  "labels_status": {
+    "todo": "To Do",
+    "andamento": "In Progress",
+    "review": "Review"
+  }
+}

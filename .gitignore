@@ -5,7 +5,9 @@
 
 # dotenv files
 .env
-.claude
+
+# Claude Code: as skills do projeto são versionadas; permissões locais não
+.claude/settings.local.json
 
 # Local secrets — never commit these
 appsettings.Development.json

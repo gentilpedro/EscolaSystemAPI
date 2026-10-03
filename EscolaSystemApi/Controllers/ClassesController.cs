@@ -11,8 +11,8 @@ namespace EscolaSystemApi.Controllers;
 public class ClassesController(IClassService classService) : BaseApiController
 {
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] PagedQuery query, CancellationToken cancellationToken)
-        => HandleResult(await classService.GetAllAsync(query, cancellationToken));
+    public async Task<IActionResult> GetAll([FromQuery] PagedQuery query, [FromQuery] Guid? schoolId, CancellationToken cancellationToken)
+        => HandleResult(await classService.GetAllAsync(query, schoolId, cancellationToken));
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
@@ -24,7 +24,7 @@ public class ClassesController(IClassService classService) : BaseApiController
     {
         var validation = await new CreateClassValidator().ValidateAsync(dto, cancellationToken);
         if (!validation.IsValid)
-            return BadRequest(new { errors = validation.Errors.Select(e => e.ErrorMessage) });
+            return ValidationFailed(validation);
 
         return HandleResult(await classService.CreateAsync(dto, cancellationToken));
     }
@@ -32,7 +32,13 @@ public class ClassesController(IClassService classService) : BaseApiController
     [HttpPut("{id:guid}")]
     [Authorize(Roles = "Admin,Director")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateClassDto dto, CancellationToken cancellationToken)
-        => HandleResult(await classService.UpdateAsync(id, dto, cancellationToken));
+    {
+        var validation = await new UpdateClassValidator().ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
+            return ValidationFailed(validation);
+
+        return HandleResult(await classService.UpdateAsync(id, dto, cancellationToken));
+    }
 
     [HttpDelete("{id:guid}")]
     [Authorize(Roles = "Admin,Director")]

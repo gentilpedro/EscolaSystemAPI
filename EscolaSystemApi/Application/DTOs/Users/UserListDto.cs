@@ -1,4 +1,4 @@
-﻿namespace EscolaSystemApi.Application.DTOs.Users;
+namespace EscolaSystemApi.Application.DTOs.Users;
 
 public sealed record UserListDto(
     Guid Id,
@@ -10,5 +10,8 @@ public sealed record UserListDto(
     bool IsActive,
     DateTime CreatedAt,
     string? Cpf = null,
-    string? Phone = null
+    string? Phone = null,
+    Guid? StudentId = null,
+    IReadOnlyList<Guid>? ClassIds = null,
+    IReadOnlyList<Guid>? StudentIds = null
 );

@@ -24,7 +24,7 @@ public class SchoolsController(ISchoolService schoolService) : BaseApiController
     {
         var validation = await new CreateSchoolValidator().ValidateAsync(dto, cancellationToken);
         if (!validation.IsValid)
-            return BadRequest(new { errors = validation.Errors.Select(e => e.ErrorMessage) });
+            return ValidationFailed(validation);
 
         return HandleResult(await schoolService.CreateAsync(dto, cancellationToken));
     }
@@ -32,7 +32,13 @@ public class SchoolsController(ISchoolService schoolService) : BaseApiController
     [HttpPut("{id:guid}")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateSchoolDto dto, CancellationToken cancellationToken)
-        => HandleResult(await schoolService.UpdateAsync(id, dto, cancellationToken));
+    {
+        var validation = await new UpdateSchoolValidator().ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
+            return ValidationFailed(validation);
+
+        return HandleResult(await schoolService.UpdateAsync(id, dto, cancellationToken));
+    }
 
     [HttpDelete("{id:guid}")]
     [Authorize(Roles = "Admin")]

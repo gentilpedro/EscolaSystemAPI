@@ -12,6 +12,8 @@ public class User : BaseEntity
     public Guid? StudentId { get; set; }
     public Student? Student { get; set; }
     public string? Cpf { get; set; }
+    public string? CpfHash { get; set; }
+    public string? CpfEncrypted { get; set; }
     public string? Phone { get; set; }
     public bool IsActive { get; set; } = true;
     public ICollection<TeacherClass> TeacherClasses { get; set; } = [];

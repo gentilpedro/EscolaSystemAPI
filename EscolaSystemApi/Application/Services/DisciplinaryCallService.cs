@@ -11,29 +11,25 @@ namespace EscolaSystemApi.Application.Services;
 
 public class DisciplinaryCallService(IUnitOfWork unitOfWork, AppDbContext context, ICurrentUserService currentUser) : IDisciplinaryCallService
 {
-    public async Task<Result<PagedResult<DisciplinaryCallDto>>> GetAllAsync(PagedQuery query, CancellationToken cancellationToken = default)
+    public async Task<Result<PagedResult<DisciplinaryCallDto>>> GetAllAsync(PagedQuery query, DisciplinaryCallFilter? filter = null, CancellationToken cancellationToken = default)
     {
-        var baseQuery = context.DisciplinaryCalls.AsNoTracking()
-            .Include(d => d.Student).ThenInclude(s => s.Class).ThenInclude(c => c.School)
-            .Include(d => d.ResolvedBy);
+        var filtered = ScopedCalls();
 
-        var filtered = currentUser.Role switch
-        {
-            "Admin" => baseQuery,
-            "Director" => baseQuery.Where(d => d.Student.Class.SchoolId == currentUser.SchoolId),
-            "Teacher" => baseQuery.Where(d => context.TeacherClasses
-                .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == d.Student.ClassId)),
-            "Orientador" => baseQuery.Where(d => context.OrientadorClasses
-                .Any(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == d.Student.ClassId)),
-            "Student" => baseQuery.Where(d => d.StudentId == currentUser.StudentId),
-            "Parent" => baseQuery.Where(d => context.ParentStudents
-                .Any(ps => ps.ParentId == currentUser.UserId && ps.StudentId == d.StudentId)),
-            _ => baseQuery.Where(_ => false)
-        };
+        if (filter?.SchoolId is { } schoolId)
+            filtered = filtered.Where(d => d.Student.Class.SchoolId == schoolId);
+        if (filter?.StudentId is { } studentId)
+            filtered = filtered.Where(d => d.StudentId == studentId);
+        if (filter?.ClassId is { } classId)
+            filtered = filtered.Where(d => d.Student.ClassId == classId);
+        if (filter?.Status is { } status)
+            filtered = filtered.Where(d => d.Status == status);
 
         var totalCount = await filtered.CountAsync(cancellationToken);
         var totalPages = (int)Math.Ceiling(totalCount / (double)query.PageSize);
-        var data = await filtered.Skip(query.Skip).Take(query.Take).ToListAsync(cancellationToken);
+        var data = await filtered
+            .OrderByDescending(d => d.CreatedAt)
+            .Skip(query.Skip).Take(query.Take)
+            .ToListAsync(cancellationToken);
 
         return Result<PagedResult<DisciplinaryCallDto>>.Success(
             new PagedResult<DisciplinaryCallDto>(data.Select(ToDto), query.Page, query.PageSize, totalCount, totalPages));
@@ -41,25 +37,8 @@ public class DisciplinaryCallService(IUnitOfWork unitOfWork, AppDbContext contex
 
     public async Task<Result<DisciplinaryCallDto>> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var query = context.DisciplinaryCalls.AsNoTracking()
-            .Include(d => d.Student).ThenInclude(s => s.Class).ThenInclude(c => c.School)
-            .Include(d => d.ResolvedBy);
+        var call = await ScopedCalls().FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
 
-        var filtered = currentUser.Role switch
-        {
-            "Admin" => query,
-            "Director" => query.Where(d => d.Student.Class.SchoolId == currentUser.SchoolId),
-            "Teacher" => query.Where(d => context.TeacherClasses
-                .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == d.Student.ClassId)),
-            "Orientador" => query.Where(d => context.OrientadorClasses
-                .Any(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == d.Student.ClassId)),
-            "Student" => query.Where(d => d.StudentId == currentUser.StudentId),
-            "Parent" => query.Where(d => context.ParentStudents
-                .Any(ps => ps.ParentId == currentUser.UserId && ps.StudentId == d.StudentId)),
-            _ => query.Where(_ => false)
-        };
-
-        var call = await filtered.FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
         return call is null
             ? Result<DisciplinaryCallDto>.NotFound("Chamado disciplinar não encontrado.")
             : Result<DisciplinaryCallDto>.Success(ToDto(call));
@@ -73,35 +52,20 @@ public class DisciplinaryCallService(IUnitOfWork unitOfWork, AppDbContext contex
         if (student is null)
             return Result<DisciplinaryCallDto>.NotFound("Aluno não encontrado.");
 
-        if (currentUser.Role == "Teacher")
-        {
-            var isTeacherOfClass = await context.TeacherClasses
-                .AnyAsync(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == student.ClassId, cancellationToken);
-
-            if (!isTeacherOfClass)
-                return Result<DisciplinaryCallDto>.Forbidden("Você não é professor da turma deste aluno.");
-        }
-
-        if (currentUser.Role == "Orientador")
-        {
-            var isOrientadorOfClass = await context.OrientadorClasses
-                .AnyAsync(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == student.ClassId, cancellationToken);
-
-            if (!isOrientadorOfClass)
-                return Result<DisciplinaryCallDto>.Forbidden("Você não é orientador da turma deste aluno.");
-        }
-
-        if (currentUser.Role == "Director" && student.Class.SchoolId != currentUser.SchoolId)
-            return Result<DisciplinaryCallDto>.Forbidden("Este aluno não pertence à sua escola.");
+        var denied = await CheckClassAccessAsync(student.ClassId, student.Class.SchoolId, cancellationToken);
+        if (denied is not null)
+            return denied;
 
         var call = new DisciplinaryCall
         {
             StudentId = dto.StudentId,
-            Description = dto.Description
+            Description = dto.Description,
+            CreatedById = currentUser.UserId
         };
 
         await unitOfWork.Repository<DisciplinaryCall>().AddAsync(call, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+
         return await GetByIdAsync(call.Id, cancellationToken) is { IsSuccess: true } r
             ? Result<DisciplinaryCallDto>.Created(r.Data!)
             : Result<DisciplinaryCallDto>.BadRequest("Erro ao criar chamado.");
@@ -119,30 +83,20 @@ public class DisciplinaryCallService(IUnitOfWork unitOfWork, AppDbContext contex
         if (call.Status != DisciplinaryCallStatus.Pending)
             return Result<DisciplinaryCallDto>.BadRequest("Apenas chamados pendentes podem ser editados.");
 
-        if (currentUser.Role == "Teacher")
-        {
-            var isTeacherOfClass = await context.TeacherClasses
-                .AnyAsync(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == call.Student.ClassId, cancellationToken);
+        var denied = await CheckClassAccessAsync(call.Student.ClassId, call.Student.Class.SchoolId, cancellationToken);
+        if (denied is not null)
+            return denied;
 
-            if (!isTeacherOfClass)
-                return Result<DisciplinaryCallDto>.Forbidden("Você não é professor da turma deste aluno.");
-        }
-
-        if (currentUser.Role == "Orientador")
-        {
-            var isOrientadorOfClass = await context.OrientadorClasses
-                .AnyAsync(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == call.Student.ClassId, cancellationToken);
-
-            if (!isOrientadorOfClass)
-                return Result<DisciplinaryCallDto>.Forbidden("Você não é orientador da turma deste aluno.");
-        }
-
-        if (currentUser.Role == "Director" && call.Student.Class.SchoolId != currentUser.SchoolId)
-            return Result<DisciplinaryCallDto>.Forbidden("Este chamado não pertence à sua escola.");
+        // Professor só edita o que ele mesmo abriu
+        if (currentUser.Role == "Teacher" && call.CreatedById is not null && call.CreatedById != currentUser.UserId)
+            return Result<DisciplinaryCallDto>.Forbidden("Você só pode editar chamados que você abriu.");
 
         call.Description = dto.Description;
+        call.UpdatedAt = DateTime.UtcNow;
+
         unitOfWork.Repository<DisciplinaryCall>().Update(call);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+
         return await GetByIdAsync(id, cancellationToken);
     }
 
@@ -164,20 +118,69 @@ public class DisciplinaryCallService(IUnitOfWork unitOfWork, AppDbContext contex
         if (call.Status != DisciplinaryCallStatus.Pending)
             return Result<DisciplinaryCallDto>.BadRequest("Chamado já foi resolvido.");
 
-        if (currentUser.Role == "Director" && call.Student.Class.SchoolId != currentUser.SchoolId)
-            return Result<DisciplinaryCallDto>.Forbidden("Este chamado não pertence à sua escola.");
+        var denied = await CheckClassAccessAsync(call.Student.ClassId, call.Student.Class.SchoolId, cancellationToken);
+        if (denied is not null)
+            return denied;
 
         call.Status = status;
         call.ResolvedById = resolvedById;
         call.ResolvedAt = DateTime.UtcNow;
         call.Resolution = dto.Resolution;
+        call.UpdatedAt = DateTime.UtcNow;
 
         unitOfWork.Repository<DisciplinaryCall>().Update(call);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+
         return await GetByIdAsync(id, cancellationToken);
+    }
+
+    // Restringe Diretor à escola e Professor/Orientador às turmas vinculadas
+    private async Task<Result<DisciplinaryCallDto>?> CheckClassAccessAsync(Guid classId, Guid schoolId, CancellationToken cancellationToken)
+    {
+        switch (currentUser.Role)
+        {
+            case "Director" when schoolId != currentUser.SchoolId:
+                return Result<DisciplinaryCallDto>.Forbidden("Este aluno não pertence à sua escola.");
+
+            case "Teacher":
+                var isTeacher = await context.TeacherClasses
+                    .AnyAsync(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == classId, cancellationToken);
+                return isTeacher ? null : Result<DisciplinaryCallDto>.Forbidden("Você não é professor da turma deste aluno.");
+
+            case "Orientador":
+                var isOrientador = await context.OrientadorClasses
+                    .AnyAsync(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == classId, cancellationToken);
+                return isOrientador ? null : Result<DisciplinaryCallDto>.Forbidden("Você não é orientador da turma deste aluno.");
+
+            default:
+                return null;
+        }
+    }
+
+    private IQueryable<DisciplinaryCall> ScopedCalls()
+    {
+        var query = context.DisciplinaryCalls.AsNoTracking()
+            .Include(d => d.Student).ThenInclude(s => s.Class)
+            .Include(d => d.ResolvedBy)
+            .Include(d => d.CreatedBy);
+
+        return currentUser.Role switch
+        {
+            "Admin" => query,
+            "Director" => query.Where(d => d.Student.Class.SchoolId == currentUser.SchoolId),
+            "Teacher" => query.Where(d => context.TeacherClasses
+                .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == d.Student.ClassId)),
+            "Orientador" => query.Where(d => context.OrientadorClasses
+                .Any(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == d.Student.ClassId)),
+            "Student" => query.Where(d => d.StudentId == currentUser.StudentId),
+            "Parent" => query.Where(d => context.ParentStudents
+                .Any(ps => ps.ParentId == currentUser.UserId && ps.StudentId == d.StudentId)),
+            _ => query.Where(_ => false)
+        };
     }
 
     private static DisciplinaryCallDto ToDto(DisciplinaryCall d) =>
         new(d.Id, d.StudentId, d.Student?.Name ?? string.Empty, d.Description, d.Status,
-            d.Status.ToString(), d.ResolvedById, d.ResolvedBy?.Name, d.ResolvedAt, d.Resolution, d.CreatedAt);
+            d.Status.ToString(), d.ResolvedById, d.ResolvedBy?.Name, d.ResolvedAt, d.Resolution, d.CreatedAt,
+            d.CreatedById, d.CreatedBy?.Name, d.Student?.ClassId, d.Student?.Class?.Name, d.Student?.Class?.SchoolId);
 }

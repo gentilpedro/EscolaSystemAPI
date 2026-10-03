@@ -102,6 +102,9 @@ namespace EscolaSystemApi.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("CreatedById")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(1000)
@@ -127,6 +130,8 @@ namespace EscolaSystemApi.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
 
                     b.HasIndex("ResolvedById");
 
@@ -429,6 +434,14 @@ namespace EscolaSystemApi.Migrations
                         .HasMaxLength(14)
                         .HasColumnType("character varying(14)");
 
+                    b.Property<string>("CpfEncrypted")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("CpfHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -466,6 +479,9 @@ namespace EscolaSystemApi.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CpfHash")
+                        .HasDatabaseName("IX_Users_CpfHash");
 
                     b.HasIndex("Email")
                         .IsUnique();
@@ -554,6 +570,11 @@ namespace EscolaSystemApi.Migrations
 
             modelBuilder.Entity("EscolaSystemApi.Domain.Entities.DisciplinaryCall", b =>
                 {
+                    b.HasOne("User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("User", "ResolvedBy")
                         .WithMany()
                         .HasForeignKey("ResolvedById")
@@ -564,6 +585,8 @@ namespace EscolaSystemApi.Migrations
                         .HasForeignKey("StudentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("CreatedBy");
 
                     b.Navigation("ResolvedBy");
 
