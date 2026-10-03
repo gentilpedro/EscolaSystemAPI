@@ -43,6 +43,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAttendanceService, AttendanceService>();
         services.AddScoped<IDisciplinaryCallService, DisciplinaryCallService>();
         services.AddScoped<IPendingWorkService, PendingWorkService>();
+        services.AddScoped<IDashboardService, DashboardService>();
 
         return services;
     }
