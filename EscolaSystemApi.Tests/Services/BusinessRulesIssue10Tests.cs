@@ -69,11 +69,11 @@ public class BusinessRulesIssue10Tests
         var school = DbContextHelper.CreateSchool(context);
         var cls = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls.Id);
-        DbContextHelper.CreateGrade(context, student.Id, cls.Id); // Matemática, 1° Bimestre
+        DbContextHelper.CreateGrade(context, student.Id, cls.Id); // Matemática, 1° Trimestre
         var service = new GradeService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
 
         // Mesma matéria com outra caixa e o bimestre com "º" em vez de "°"
-        var result = await service.CreateAsync(new CreateGradeDto(student.Id, cls.Id, " matemática ", 9, "1º Bimestre"));
+        var result = await service.CreateAsync(new CreateGradeDto(student.Id, cls.Id, " matemática ", 9, "1º Trimestre"));
 
         result.StatusCode.Should().Be(409);
     }
@@ -88,7 +88,7 @@ public class BusinessRulesIssue10Tests
         DbContextHelper.CreateGrade(context, student.Id, cls.Id);
         var service = new GradeService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
 
-        var result = await service.CreateAsync(new CreateGradeDto(student.Id, cls.Id, "Matemática", 7, "2º Bimestre"));
+        var result = await service.CreateAsync(new CreateGradeDto(student.Id, cls.Id, "Matemática", 7, "2º Trimestre"));
 
         result.StatusCode.Should().Be(201);
     }
@@ -102,9 +102,9 @@ public class BusinessRulesIssue10Tests
         var student = DbContextHelper.CreateStudent(context, cls.Id);
         DbContextHelper.CreateGrade(context, student.Id, cls.Id);
         var service = new GradeService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
-        var other = await service.CreateAsync(new CreateGradeDto(student.Id, cls.Id, "Matemática", 7, "2º Bimestre"));
+        var other = await service.CreateAsync(new CreateGradeDto(student.Id, cls.Id, "Matemática", 7, "2º Trimestre"));
 
-        var result = await service.UpdateAsync(other.Data!.Id, new UpdateGradeDto("Matemática", 7, "1º Bimestre"));
+        var result = await service.UpdateAsync(other.Data!.Id, new UpdateGradeDto("Matemática", 7, "1º Trimestre"));
 
         result.StatusCode.Should().Be(409);
     }
@@ -119,19 +119,19 @@ public class BusinessRulesIssue10Tests
         var grade = DbContextHelper.CreateGrade(context, student.Id, cls.Id);
         var service = new GradeService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
 
-        var result = await service.UpdateAsync(grade.Id, new UpdateGradeDto("Matemática", 9.5m, "1º Bimestre"));
+        var result = await service.UpdateAsync(grade.Id, new UpdateGradeDto("Matemática", 9.5m, "1º Trimestre"));
 
         result.IsSuccess.Should().BeTrue();
         result.Data!.Value.Should().Be(9.5m);
     }
 
     [Theory]
-    [InlineData("1º Bimestre", true)]
-    [InlineData("1° Bimestre", true)]
-    [InlineData("4º Bimestre", true)]
+    [InlineData("1º Trimestre", true)]
+    [InlineData("1° Trimestre", true)]
+    [InlineData("3º Trimestre", true)]
     [InlineData("Recuperação", true)]
     [InlineData("Final", true)]
-    [InlineData("5º Bimestre", false)]
+    [InlineData("4º Trimestre", false)]
     [InlineData("Semestre 1", false)]
     public void GradeValidator_AcceptsOnlySchoolPeriods(string period, bool valid)
     {

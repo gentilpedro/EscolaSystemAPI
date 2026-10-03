@@ -180,7 +180,7 @@ A listagem retorna `classIds` (turmas de professor/orientador) e `studentIds` (f
 | PUT | `/{id}` | Admin, Teacher, Director |
 | DELETE | `/{id}` | Admin, Teacher, Director |
 
-Uma nota por aluno, turma, matéria e período (409 se repetir). Períodos aceitos: `1º Bimestre` a `4º Bimestre`, `Recuperação` e `Final` (`1° Bimestre` com símbolo de grau também é aceito).
+Uma nota por aluno, turma, matéria e período (409 se repetir). Períodos aceitos: `1º Trimestre`, `2º Trimestre`, `3º Trimestre`, `Recuperação` e `Final` (`1° Trimestre` com símbolo de grau também é aceito). Notas antigas com período de bimestre continuam nas consultas; para editá-las, escolha um trimestre.
 
 ### Frequência — `/api/attendance`
 
