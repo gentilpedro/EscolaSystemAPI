@@ -1,7 +1,9 @@
 using EscolaSystemApi.Application.Interfaces;
+using EscolaSystemApi.Common;
 using EscolaSystemApi.Extensions;
 using EscolaSystemApi.Infrastructure.Data;
 using EscolaSystemApi.Middleware;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using Serilog;
@@ -25,7 +27,11 @@ try
     {
         // Reject any request body larger than 1 MB
         options.Filters.Add(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(1 * 1024 * 1024));
-    });
+    })
+    .ConfigureApiBehaviorOptions(options =>
+        options.InvalidModelStateResponseFactory = ApiErrors.InvalidModelState);
+
+    builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, ApiAuthorizationResultHandler>();
 
     builder.WebHost.ConfigureKestrel(k =>
         k.Limits.MaxRequestBodySize = 1 * 1024 * 1024); // 1 MB global cap
