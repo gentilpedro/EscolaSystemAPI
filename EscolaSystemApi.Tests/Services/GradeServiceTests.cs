@@ -88,7 +88,7 @@ public class GradeServiceTests
         var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
         var service = new GradeService(uow, context, currentUser);
 
-        var dto = new CreateGradeDto(student.Id, cls.Id, "Matemática", 9.5m, "1° Bimestre");
+        var dto = new CreateGradeDto(student.Id, cls.Id, "Matemática", 9.5m, "1° Trimestre");
         var result = await service.CreateAsync(dto);
 
         result.IsSuccess.Should().BeTrue();
@@ -111,7 +111,7 @@ public class GradeServiceTests
         var currentUser = new CurrentUserServiceMock(teacher.Id, "Teacher", school.Id);
         var service = new GradeService(uow, context, currentUser);
 
-        var dto = new CreateGradeDto(student.Id, cls2.Id, "Português", 8.0m, "1° Bimestre");
+        var dto = new CreateGradeDto(student.Id, cls2.Id, "Português", 8.0m, "1° Trimestre");
         var result = await service.CreateAsync(dto);
 
         result.IsSuccess.Should().BeFalse();
@@ -144,7 +144,7 @@ public class GradeServiceTests
         var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
         var service = new GradeService(uow, context, currentUser);
 
-        var dto = new UpdateGradeDto("Português", 7.5m, "2° Bimestre");
+        var dto = new UpdateGradeDto("Português", 7.5m, "2° Trimestre");
         var result = await service.UpdateAsync(grade.Id, dto);
 
         result.IsSuccess.Should().BeTrue();
@@ -166,7 +166,7 @@ public class GradeServiceTests
         var currentUser = new CurrentUserServiceMock(teacher.Id, "Teacher", school.Id);
         var service = new GradeService(uow, context, currentUser);
 
-        var dto = new UpdateGradeDto("Português", 7.5m, "2° Bimestre");
+        var dto = new UpdateGradeDto("Português", 7.5m, "2° Trimestre");
         var result = await service.UpdateAsync(grade.Id, dto);
 
         result.IsSuccess.Should().BeFalse();
@@ -185,7 +185,7 @@ public class GradeServiceTests
         var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
         var service = new GradeService(uow, context, currentUser);
 
-        var dto = new CreateGradeDto(student.Id, cls2.Id, "Matemática", 9.0m, "1° Bimestre");
+        var dto = new CreateGradeDto(student.Id, cls2.Id, "Matemática", 9.0m, "1° Trimestre");
         var result = await service.CreateAsync(dto);
 
         result.IsSuccess.Should().BeFalse();

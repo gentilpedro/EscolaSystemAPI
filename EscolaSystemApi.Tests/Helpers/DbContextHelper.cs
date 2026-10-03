@@ -142,7 +142,7 @@ public static class DbContextHelper
         ClassId = classId,
         Subject = "Matemática",
         Value = 8.5m,
-        Period = "1° Bimestre",
+        Period = "1° Trimestre",
         CreatedAt = DateTime.UtcNow
     };
     context.Grades.Add(grade);
