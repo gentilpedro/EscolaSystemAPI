@@ -1,16 +1,17 @@
 # EscolaSystem API
 
-REST API para gestão escolar — autenticação JWT, controle de turmas, alunos, notas, frequência, ocorrências disciplinares e trabalhos pendentes.
+REST API para gestão escolar multi-escola — autenticação JWT, controle de turmas, alunos, notas, frequência, ocorrências disciplinares, trabalhos pendentes, dashboards e relatórios.
 
 ## Stack
 
 - **Runtime:** .NET 9 / ASP.NET Core
 - **Banco:** PostgreSQL via Entity Framework Core (Npgsql)
-- **Auth:** JWT Bearer
+- **Auth:** JWT Bearer com revogação no logout
 - **Docs:** Scalar (`/scalar/v1`)
 - **Logs:** Serilog (console + arquivo em `logs/`)
 - **Validação:** FluentValidation
 - **Hash de senha:** BCrypt
+- **CPF:** criptografado em repouso (AES) + hash (HMAC) para busca/unicidade
 
 ---
 
@@ -23,7 +24,7 @@ REST API para gestão escolar — autenticação JWT, controle de turmas, alunos
 
 ## Configuração
 
-As credenciais de desenvolvimento ficam em `EscolaSystemApi/appsettings.Development.json` (não versionado em produção):
+As credenciais de desenvolvimento ficam em `EscolaSystemApi/appsettings.Development.json` (ignorado pelo git — nunca versione este arquivo):
 
 ```json
 {
@@ -31,10 +32,23 @@ As credenciais de desenvolvimento ficam em `EscolaSystemApi/appsettings.Developm
     "DefaultConnection": "Host=localhost;Port=5432;Database=EscolaSystem;Username=postgres;Password=SUA_SENHA"
   },
   "Jwt": {
-    "Key": "SUA_CHAVE_JWT"
+    "Key": "SUA_CHAVE_JWT_COM_PELO_MENOS_32_CARACTERES"
+  },
+  "Cpf": {
+    "EncryptionKey": "SUA_CHAVE_DE_CRIPTOGRAFIA_DE_CPF"
   }
 }
 ```
+
+> `Cpf:EncryptionKey` é obrigatória: sem ela a API não sobe. Trocar a chave depois torna ilegíveis os CPFs já gravados.
+
+Configurações opcionais:
+
+| Chave | Padrão | Descrição |
+|---|---|---|
+| `Jwt:ExpirationInMinutes` | `60` | Validade do token |
+| `RateLimiting:AuthPermitLimit` | `5` | Tentativas de login/reset por IP a cada 15 min |
+| `Cors:AllowedOrigins` | `localhost:3000`, `localhost:5173` | Origens do front (fora de Development só `https://`) |
 
 ---
 
@@ -53,11 +67,15 @@ A API sobe em:
 
 Documentação interativa: `https://localhost:7028/scalar/v1`
 
+### Testes
+
+```bash
+dotnet test EscolaSystemApi.Tests/EscolaSystemApi.Tests.csproj
+```
+
 ---
 
 ## Usuário admin padrão (seed)
-
-Criado automaticamente na primeira execução se não existir.
 
 | Campo | Valor |
 |---|---|
@@ -65,19 +83,28 @@ Criado automaticamente na primeira execução se não existir.
 | Senha | `Admin@123` |
 | Role | `Admin` |
 
-> Troque a senha após o primeiro acesso em produção.
+> Troque a senha após o primeiro acesso. As contas de exemplo antigas (`professor@`, `aluno@`, `responsavel@escolasystem.com`) são desativadas automaticamente enquanto mantiverem a senha de fábrica.
 
 ---
 
-## Roles
+## Perfis e hierarquia
 
-| ID | Nome | Descrição |
+| ID | Nome | Escopo de visualização |
 |---|---|---|
-| 1 | Admin | Administrador do sistema |
-| 2 | Director | Diretor da escola |
-| 3 | Teacher | Professor |
-| 4 | Student | Aluno |
-| 5 | Parent | Responsável |
+| 1 | Admin | Toda a plataforma |
+| 2 | Director | A própria escola |
+| 3 | Teacher | Turmas vinculadas a ele |
+| 4 | Student | Os próprios dados |
+| 5 | Parent | Os filhos vinculados |
+| 6 | Orientador | Turmas vinculadas a ele |
+
+Regras de criação e edição de usuários:
+
+- **Admin** cria e gerencia escolas, **Administradores** e **Diretores**. Não cria os perfis internos de uma escola.
+- **Diretor** cria e gerencia Professor, Aluno, Responsável e Orientador **somente da própria escola**. Não edita Admins/outros diretores, não promove ninguém a Diretor e não move usuários, turmas ou alunos para outra escola.
+- Usuário com perfil **Aluno** precisa estar vinculado a um registro de aluno (`studentId`) da mesma escola, e cada aluno tem no máximo uma conta.
+- Professores/orientadores só podem ser vinculados a turmas da própria escola; responsável e aluno precisam ser da mesma escola.
+- Exclusão de usuário é lógica (desativa), preservando histórico.
 
 ---
 
@@ -93,60 +120,61 @@ Authorization: Bearer <token>
 | Método | Rota | Auth | Descrição |
 |---|---|---|---|
 | POST | `/login` | Público | Autenticar e obter token JWT |
-| POST | `/register` | Admin, Director | Registrar novo usuário |
-| GET | `/me` | Autenticado | Dados do usuário logado |
-| POST | `/logout` | Autenticado | Logout (invalida sessão no cliente) |
-| POST | `/reset-password` | Autenticado | Alterar senha |
+| POST | `/register` | Admin | Cria **outro Admin** (`roleId: 1`). Demais perfis: `/api/users` |
+| GET | `/me` | Autenticado | Dados do usuário logado (inclui `schoolName` e `studentId`) |
+| POST | `/logout` | Autenticado | Revoga o token atual |
+| POST | `/reset-password` | Autenticado | Própria senha; Admin altera qualquer uma; Diretor altera a dos membros da sua escola |
 
 ### Escolas — `/api/schools`
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/` | Autenticado |
+| GET | `/` | Autenticado (não-admin vê só a própria escola) |
 | GET | `/{id}` | Autenticado |
 | POST | `/` | Admin |
 | PUT | `/{id}` | Admin |
-| DELETE | `/{id}` | Admin |
+| DELETE | `/{id}` | Admin — `409` se houver turmas ou usuários (desative em vez de excluir) |
 
 ### Usuários — `/api/users`
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/` | Admin, Director |
+| GET | `/?schoolId=&roleId=` | Admin, Director |
 | GET | `/{id}` | Admin, Director |
 | POST | `/` | Admin, Director |
 | PUT | `/{id}` | Admin, Director |
 | DELETE | `/{id}` | Admin, Director |
-| POST | `/{teacherId}/assign-class/{classId}` | Admin, Director |
-| DELETE | `/{teacherId}/assign-class/{classId}` | Admin, Director |
-| POST | `/{parentId}/assign-student/{studentId}` | Admin, Director |
-| DELETE | `/{parentId}/assign-student/{studentId}` | Admin, Director |
+| POST/DELETE | `/{teacherId}/assign-class/{classId}` | Admin, Director |
+| POST/DELETE | `/{parentId}/assign-student/{studentId}` | Admin, Director |
+| POST/DELETE | `/{orientadorId}/assign-orientador-class/{classId}` | Admin, Director |
+
+A listagem retorna `classIds` (turmas de professor/orientador) e `studentIds` (filhos do responsável). No `PUT`, `cpf: null` mantém o CPF atual e `cpf: ""` remove.
 
 ### Turmas — `/api/classes`
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/` | Autenticado |
+| GET | `/?schoolId=` | Autenticado (aluno e responsável veem as próprias turmas) |
 | GET | `/{id}` | Autenticado |
 | POST | `/` | Admin, Director |
 | PUT | `/{id}` | Admin, Director |
-| DELETE | `/{id}` | Admin, Director |
+| DELETE | `/{id}` | Admin, Director — `409` se houver alunos ou histórico |
 
 ### Alunos — `/api/students`
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/` | Autenticado |
+| GET | `/?classId=&schoolId=` | Autenticado |
 | GET | `/{id}` | Autenticado |
 | POST | `/` | Admin, Director |
-| PUT | `/{id}` | Admin, Director |
-| DELETE | `/{id}` | Admin, Director |
+| PUT | `/{id}` | Admin, Director (transferência só entre turmas da mesma escola) |
+| DELETE | `/{id}` | Admin, Director — `409` se houver histórico escolar |
 
 ### Notas — `/api/grades`
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/` | Autenticado |
+| GET | `/?classId=&studentId=` | Autenticado |
 | GET | `/{id}` | Autenticado |
 | POST | `/` | Admin, Teacher, Director |
 | PUT | `/{id}` | Admin, Teacher, Director |
@@ -156,31 +184,53 @@ Authorization: Bearer <token>
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/` | Autenticado |
+| GET | `/?classId=&studentId=&date=` | Autenticado |
 | GET | `/{id}` | Autenticado |
 | POST | `/` | Admin, Teacher, Director |
 | PUT | `/{id}` | Admin, Teacher, Director |
-| POST | `/bulk` | Admin, Teacher, Director |
+| POST | `/bulk` | Admin, Teacher, Director — mesma turma, mesma data, alunos da turma, sem repetição |
 
 ### Ocorrências Disciplinares — `/api/disciplinary-calls`
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/` | Autenticado |
+| GET | `/?schoolId=&studentId=&classId=&status=` | Autenticado |
 | GET | `/{id}` | Autenticado |
-| POST | `/` | Admin, Teacher, Director |
-| PUT | `/{id}` | Admin, Teacher, Director |
-| POST | `/{id}/approve` | Admin, Director |
-| POST | `/{id}/reject` | Admin, Director |
+| POST | `/` | Admin, Teacher, Director, Orientador |
+| PUT | `/{id}` | Admin, Teacher, Director, Orientador (apenas pendentes; professor só edita as que abriu) |
+| POST | `/{id}/approve` | Admin, Director, Orientador |
+| POST | `/{id}/reject` | Admin, Director, Orientador |
+
+Status: `1` Pendente, `2` Aprovado, `3` Rejeitado. A resposta inclui o autor (`createdById`, `createdByName`) e a turma do aluno.
 
 ### Trabalhos Pendentes — `/api/pending-works`
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/` | Autenticado |
+| GET | `/?classId=&studentId=` | Autenticado |
 | GET | `/{id}` | Autenticado |
 | POST | `/` | Admin, Teacher, Director |
-| PUT | `/{id}/delivered` | Admin, Teacher, Director, Student |
+| PUT | `/{id}/delivered` | Admin, Teacher, Director, Student (aluno só entrega o próprio trabalho) |
+
+### Dashboard e relatórios
+
+| Método | Rota | Auth | Descrição |
+|---|---|---|---|
+| GET | `/api/admin/stats` | Admin | Totais da plataforma |
+| GET | `/api/dashboard/stats` | Autenticado | Totais no escopo do usuário: turmas, alunos, funcionários, ocorrências pendentes, trabalhos pendentes, média geral e % de presença |
+| GET | `/api/reports/classes?schoolId=` | Admin, Director, Teacher, Orientador | Por turma: alunos, média, % de presença e ocorrências |
+
+---
+
+## Respostas de erro
+
+Todas as falhas seguem o formato:
+
+```json
+{ "error": "Mensagem", "message": "Mensagem" }
+```
+
+Erros de validação (`400`) incluem também `errors: string[]`. Erros internos (`500`) incluem `traceId`.
 
 ---
 
@@ -189,7 +239,7 @@ Authorization: Bearer <token>
 | Política | Limite |
 |---|---|
 | Global | 200 req / minuto por IP |
-| Rotas de auth | 5 req / 15 minutos por IP |
+| Login, register e reset de senha | 5 req / 15 minutos **por IP** (configurável) |
 
 ---
 
@@ -200,3 +250,5 @@ Todos os endpoints de listagem aceitam query params:
 ```
 GET /api/schools?page=1&pageSize=20
 ```
+
+`page` mínimo 1; `pageSize` entre 1 e 500.
