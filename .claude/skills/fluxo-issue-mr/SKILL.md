@@ -42,10 +42,23 @@ issue, **não crie outra**: rode `ver-issue --numero N`, confira que ela está a
 
 ```bash
 git status --short          # a árvore precisa estar limpa
+git config --local user.name    # tem que ser: gentilpedro
+git config --local user.email   # tem que ser: gentil.pedro21@gmail.com
 ```
 
 Se houver alteração sem commit, **pare e pergunte** (stash, commit na branch atual ou abortar). Nunca
 descarte nada e nunca trabalhe direto na branch padrão.
+
+**Identidade dos commits:** todo commit sai como `gentilpedro <gentil.pedro21@gmail.com>`. Se a
+identidade local estiver diferente ou vazia, corrija antes do primeiro commit, sempre com `--local`
+(nunca `--global`):
+
+```bash
+git config --local user.name "gentilpedro"
+git config --local user.email "gentil.pedro21@gmail.com"
+```
+
+Esta regra vale mesmo que outra skill (como a `git-standards`) indique outro e-mail.
 
 ## 3. Abrir a issue
 
@@ -85,7 +98,11 @@ commitar.
 ```bash
 git log -1 --format=%B | grep -iE 'claude|anthropic|co-authored|generated with|session' \
   && echo "ATRIBUIÇÃO ENCONTRADA — corrigir com git commit --amend -F <arquivo>"
+git log -1 --format='%an <%ae>'   # tem que ser: gentilpedro <gentil.pedro21@gmail.com>
 ```
+
+Se o autor sair diferente, corrija com `git commit --amend --reset-author -F <arquivo>` depois de
+ajustar a identidade local.
 
 - Se escapar num commit que já subiu, avise o usuário antes de reescrever. Isso exige push forçado na
   branch da tarefa, **nunca** na branch padrão.
