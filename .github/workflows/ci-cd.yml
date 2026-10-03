@@ -1,0 +1,87 @@
+name: CI/CD - .NET API
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*.*.*"]
+  pull_request:
+    branches: [master]
+
+# Permissão mínima por padrão; o job de release eleva para "write" apenas onde precisa.
+permissions:
+  contents: read
+
+# Um novo push no mesmo PR cancela a execução anterior
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_VERSION: "9.0.x"
+  SOLUTION_PATH: "EscolaSystemApi.sln"
+  API_PROJECT_PATH: "EscolaSystemApi/EscolaSystemApi.csproj"
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore "${{ env.SOLUTION_PATH }}"
+
+      - name: Build
+        run: dotnet build "${{ env.SOLUTION_PATH }}" --configuration Release --no-restore
+
+      # Os testes usam banco em memória e não precisam de PostgreSQL nem de secrets
+      - name: Test
+        run: dotnet test "${{ env.SOLUTION_PATH }}" --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+
+      - name: Publicar resultados de teste
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: "**/test-results.trx"
+          if-no-files-found: ignore
+
+  release:
+    name: Publish & Release
+    needs: build-test
+    # Só roda quando build/test passou E o gatilho foi uma tag vMAJOR.MINOR.PATCH
+    if: needs.build-test.result == 'success' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # elevado só neste job, só para criar a release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # Publica só a API; o projeto de testes não faz parte do artefato
+      - name: Publish
+        run: dotnet publish "${{ env.API_PROJECT_PATH }}" --configuration Release --output ./publish
+
+      - name: Empacotar artefato
+        run: |
+          cd publish
+          zip -r "../escolasystemapi-${{ github.ref_name }}.zip" .
+
+      - name: Criar GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: escolasystemapi-${{ github.ref_name }}.zip
+          generate_release_notes: true
