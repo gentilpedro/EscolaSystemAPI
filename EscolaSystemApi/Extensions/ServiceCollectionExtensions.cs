@@ -108,18 +108,24 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    public static IServiceCollection AddRateLimiting(this IServiceCollection services)
+    public static IServiceCollection AddRateLimiting(this IServiceCollection services, IConfiguration configuration)
     {
+        var authPermitLimit = configuration.GetValue("RateLimiting:AuthPermitLimit", 5);
+
         services.AddRateLimiter(options =>
         {
             // Strict policy for auth routes: 5 attempts per 15 minutes per IP
-            options.AddFixedWindowLimiter("AuthPolicy", opt =>
-            {
-                opt.PermitLimit = 5;
-                opt.Window = TimeSpan.FromMinutes(15);
-                opt.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-                opt.QueueLimit = 0;
-            });
+            // (particionado por IP; um limiter único bloquearia a escola inteira após 5 logins)
+            options.AddPolicy("AuthPolicy", ctx =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = authPermitLimit,
+                        Window = TimeSpan.FromMinutes(15),
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 0
+                    }));
 
             // Global policy: 200 requests per minute per IP
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>

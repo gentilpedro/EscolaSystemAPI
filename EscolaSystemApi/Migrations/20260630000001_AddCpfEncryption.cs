@@ -1,3 +1,5 @@
+using EscolaSystemApi.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -5,6 +7,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace EscolaSystemApi.Migrations;
 
 /// <inheritdoc />
+[DbContext(typeof(AppDbContext))]
+[Migration("20260630000001_AddCpfEncryption")]
 public partial class AddCpfEncryption : Migration
 {
     /// <inheritdoc />
