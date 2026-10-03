@@ -21,7 +21,8 @@ public static class DbContextHelper
             new Role { Id = 2, Name = "Director", Description = "Diretor" },
             new Role { Id = 3, Name = "Teacher", Description = "Professor" },
             new Role { Id = 4, Name = "Student", Description = "Aluno" },
-            new Role { Id = 5, Name = "Parent", Description = "Responsável" }
+            new Role { Id = 5, Name = "Parent", Description = "Responsável" },
+            new Role { Id = 6, Name = "Orientador", Description = "Orientador" }
         );
 
         context.SaveChanges();

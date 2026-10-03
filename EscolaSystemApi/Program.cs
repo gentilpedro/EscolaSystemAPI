@@ -34,7 +34,7 @@ try
     builder.Services.AddApplicationServices();
     builder.Services.AddJwtAuthentication(builder.Configuration);
     builder.Services.AddCorsPolicy(builder.Configuration, builder.Environment);
-    builder.Services.AddRateLimiting();
+    builder.Services.AddRateLimiting(builder.Configuration);
     builder.Services.AddOpenApiWithScalar();
 
     builder.Services.AddHttpContextAccessor();

@@ -7,8 +7,7 @@ namespace EscolaSystemApi.Application.Services;
 
 public class CpfEncryptionService(IConfiguration configuration) : ICpfEncryptionService
 {
-    private readonly byte[] _key = DeriveKey(
-        configuration["Cpf:EncryptionKey"] ?? throw new InvalidOperationException("Cpf:EncryptionKey not configured"));
+    private readonly byte[] _key = DeriveKey(configuration["Cpf:EncryptionKey"]);
 
     public string Encrypt(string cpf)
     {
@@ -17,7 +16,8 @@ public class CpfEncryptionService(IConfiguration configuration) : ICpfEncryption
         aes.GenerateIV();
 
         using var encryptor = aes.CreateEncryptor();
-        var cipherBytes = encryptor.TransformFinalBlock(Encoding.UTF8.GetBytes(cpf), 0, cpf.Length);
+        var plainBytes = Encoding.UTF8.GetBytes(cpf);
+        var cipherBytes = encryptor.TransformFinalBlock(plainBytes, 0, plainBytes.Length);
 
         var result = new byte[aes.IV.Length + cipherBytes.Length];
         aes.IV.CopyTo(result, 0);
@@ -44,8 +44,12 @@ public class CpfEncryptionService(IConfiguration configuration) : ICpfEncryption
         return Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(cpf))).ToLowerInvariant();
     }
 
-    private static byte[] DeriveKey(string configKey)
+    private static byte[] DeriveKey(string? configKey)
     {
+        // Chave vazia geraria criptografia previsível: falha cedo em vez de gravar CPF inseguro
+        if (string.IsNullOrWhiteSpace(configKey))
+            throw new InvalidOperationException("Cpf:EncryptionKey não configurada.");
+
         using var sha = SHA256.Create();
         return sha.ComputeHash(Encoding.UTF8.GetBytes(configKey));
     }
