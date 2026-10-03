@@ -1,5 +1,6 @@
 using EscolaSystemApi.Application.DTOs.Attendance;
 using EscolaSystemApi.Application.Interfaces;
+using EscolaSystemApi.Application.Validators.Attendance;
 using EscolaSystemApi.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -21,15 +22,37 @@ public class AttendanceController(IAttendanceService attendanceService) : BaseAp
     [HttpPost]
     [Authorize(Roles = "Admin,Teacher,Director")]
     public async Task<IActionResult> Create([FromBody] CreateAttendanceDto dto, CancellationToken cancellationToken)
-        => HandleResult(await attendanceService.CreateAsync(dto, cancellationToken));
+    {
+        var validation = await new CreateAttendanceValidator().ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
+            return ValidationFailed(validation);
+
+        return HandleResult(await attendanceService.CreateAsync(dto, cancellationToken));
+    }
 
     [HttpPut("{id:guid}")]
     [Authorize(Roles = "Admin,Teacher,Director")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateAttendanceDto dto, CancellationToken cancellationToken)
-        => HandleResult(await attendanceService.UpdateAsync(id, dto, cancellationToken));
+    {
+        var validation = await new UpdateAttendanceValidator().ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
+            return ValidationFailed(validation);
+
+        return HandleResult(await attendanceService.UpdateAsync(id, dto, cancellationToken));
+    }
 
     [HttpPost("bulk")]
     [Authorize(Roles = "Admin,Teacher,Director")]
     public async Task<IActionResult> BulkCreate([FromBody] List<CreateAttendanceDto> dtos, CancellationToken cancellationToken)
-        => HandleResult(await attendanceService.BulkCreateAsync(dtos, cancellationToken));
+    {
+        var validator = new CreateAttendanceValidator();
+        foreach (var dto in dtos)
+        {
+            var validation = await validator.ValidateAsync(dto, cancellationToken);
+            if (!validation.IsValid)
+                return ValidationFailed(validation);
+        }
+
+        return HandleResult(await attendanceService.BulkCreateAsync(dtos, cancellationToken));
+    }
 }

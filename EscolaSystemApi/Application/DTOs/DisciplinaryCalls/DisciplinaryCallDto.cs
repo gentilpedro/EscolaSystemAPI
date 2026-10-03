@@ -13,4 +13,15 @@ public sealed record DisciplinaryCallDto(
     string? ResolvedByName,
     DateTime? ResolvedAt,
     string? Resolution,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    Guid? CreatedById = null,
+    string? CreatedByName = null,
+    Guid? ClassId = null,
+    string? ClassName = null,
+    Guid? SchoolId = null);
+
+public sealed record DisciplinaryCallFilter(
+    Guid? SchoolId = null,
+    Guid? StudentId = null,
+    Guid? ClassId = null,
+    DisciplinaryCallStatus? Status = null);

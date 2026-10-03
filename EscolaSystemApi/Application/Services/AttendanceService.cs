@@ -39,7 +39,7 @@ public class AttendanceService(IUnitOfWork unitOfWork, AppDbContext context, ICu
 
         var totalCount = await filtered.CountAsync(cancellationToken);
         var totalPages = (int)Math.Ceiling(totalCount / (double)query.PageSize);
-        var data = await filtered.Skip(query.Skip).Take(query.Take).ToListAsync(cancellationToken);
+        var data = await filtered.OrderByDescending(a => a.Date).ThenBy(a => a.Student.Name).Skip(query.Skip).Take(query.Take).ToListAsync(cancellationToken);
 
         return Result<PagedResult<AttendanceDto>>.Success(
             new PagedResult<AttendanceDto>(data.Select(ToDto), query.Page, query.PageSize, totalCount, totalPages));
@@ -139,6 +139,7 @@ public class AttendanceService(IUnitOfWork unitOfWork, AppDbContext context, ICu
 
         attendance.IsPresent = dto.IsPresent;
         attendance.Notes = dto.Notes;
+        attendance.UpdatedAt = DateTime.UtcNow;
 
         unitOfWork.Repository<Attendance>().Update(attendance);
         await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -151,8 +152,24 @@ public class AttendanceService(IUnitOfWork unitOfWork, AppDbContext context, ICu
             return Result<List<AttendanceDto>>.BadRequest("Nenhuma chamada fornecida.");
 
         var classId = dtos[0].ClassId;
+        var date = dtos[0].Date;
+
         if (dtos.Any(d => d.ClassId != classId))
             return Result<List<AttendanceDto>>.BadRequest("Todos os registros devem pertencer à mesma turma.");
+
+        if (dtos.Any(d => d.Date != date))
+            return Result<List<AttendanceDto>>.BadRequest("Todos os registros devem ser da mesma data.");
+
+        var studentIds = dtos.Select(d => d.StudentId).ToList();
+        if (studentIds.Distinct().Count() != studentIds.Count)
+            return Result<List<AttendanceDto>>.BadRequest("Há alunos repetidos na chamada.");
+
+        var cls = await context.Classes.FirstOrDefaultAsync(c => c.Id == classId, cancellationToken);
+        if (cls is null)
+            return Result<List<AttendanceDto>>.NotFound("Turma não encontrada.");
+
+        if (currentUser.Role == "Director" && cls.SchoolId != currentUser.SchoolId)
+            return Result<List<AttendanceDto>>.Forbidden("Esta turma não pertence à sua escola.");
 
         if (currentUser.Role == "Teacher")
         {
@@ -163,15 +180,16 @@ public class AttendanceService(IUnitOfWork unitOfWork, AppDbContext context, ICu
                 return Result<List<AttendanceDto>>.Forbidden("Você não é professor desta turma.");
         }
 
-        var date = dtos[0].Date;
-        var studentIds = dtos.Select(d => d.StudentId).ToList();
+        var studentsInClass = await context.Students
+            .CountAsync(s => s.ClassId == classId && studentIds.Contains(s.Id), cancellationToken);
 
-        var existingIds = await context.Attendances
-            .Where(a => a.ClassId == classId && a.Date == date && studentIds.Contains(a.StudentId))
-            .Select(a => a.StudentId)
-            .ToListAsync(cancellationToken);
+        if (studentsInClass != studentIds.Count)
+            return Result<List<AttendanceDto>>.BadRequest("Um ou mais alunos não pertencem a esta turma.");
 
-        if (existingIds.Count > 0)
+        var alreadyRegistered = await context.Attendances
+            .AnyAsync(a => a.ClassId == classId && a.Date == date && studentIds.Contains(a.StudentId), cancellationToken);
+
+        if (alreadyRegistered)
             return Result<List<AttendanceDto>>.Conflict("Chamada já registrada para um ou mais alunos nesta data.");
 
         var attendances = dtos.Select(dto => new Attendance
@@ -189,10 +207,11 @@ public class AttendanceService(IUnitOfWork unitOfWork, AppDbContext context, ICu
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         var ids = attendances.Select(a => a.Id).ToList();
-        var created = await context.Attendances
+        var created = await context.Attendances.AsNoTracking()
             .Include(a => a.Student)
-            .Include(a => a.Class).ThenInclude(c => c.School)
+            .Include(a => a.Class)
             .Where(a => ids.Contains(a.Id))
+            .OrderBy(a => a.Student.Name)
             .ToListAsync(cancellationToken);
 
         return Result<List<AttendanceDto>>.Created(created.Select(ToDto).ToList());

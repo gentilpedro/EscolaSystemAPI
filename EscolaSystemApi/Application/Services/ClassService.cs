@@ -10,24 +10,19 @@ namespace EscolaSystemApi.Application.Services;
 
 public class ClassService(IUnitOfWork unitOfWork, AppDbContext context, ICurrentUserService currentUser) : IClassService
 {
-    public async Task<Result<PagedResult<ClassDto>>> GetAllAsync(PagedQuery query, CancellationToken cancellationToken = default)
+    public async Task<Result<PagedResult<ClassDto>>> GetAllAsync(PagedQuery query, Guid? schoolId = null, CancellationToken cancellationToken = default)
     {
-        var baseQuery = context.Classes.AsNoTracking().Include(c => c.School);
+        var filtered = ScopedClasses();
 
-        var filtered = currentUser.Role switch
-        {
-            "Admin" => baseQuery,
-            "Director" => baseQuery.Where(c => c.SchoolId == currentUser.SchoolId),
-            "Teacher" => baseQuery.Where(c => context.TeacherClasses
-                .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == c.Id)),
-            "Orientador" => baseQuery.Where(c => context.OrientadorClasses
-                .Any(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == c.Id)),
-            _ => baseQuery.Where(_ => false)
-        };
+        if (schoolId.HasValue)
+            filtered = filtered.Where(c => c.SchoolId == schoolId.Value);
 
         var totalCount = await filtered.CountAsync(cancellationToken);
         var totalPages = (int)Math.Ceiling(totalCount / (double)query.PageSize);
-        var data = await filtered.Skip(query.Skip).Take(query.Take).ToListAsync(cancellationToken);
+        var data = await filtered
+            .OrderByDescending(c => c.Year).ThenBy(c => c.Name)
+            .Skip(query.Skip).Take(query.Take)
+            .ToListAsync(cancellationToken);
 
         return Result<PagedResult<ClassDto>>.Success(
             new PagedResult<ClassDto>(data.Select(ToDto), query.Page, query.PageSize, totalCount, totalPages));
@@ -35,20 +30,8 @@ public class ClassService(IUnitOfWork unitOfWork, AppDbContext context, ICurrent
 
     public async Task<Result<ClassDto>> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var query = context.Classes.AsNoTracking().Include(c => c.School);
+        var cls = await ScopedClasses().FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
 
-        var filtered = currentUser.Role switch
-        {
-            "Admin" => query,
-            "Director" => query.Where(c => c.SchoolId == currentUser.SchoolId),
-            "Teacher" => query.Where(c => context.TeacherClasses
-                .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == c.Id)),
-            "Orientador" => query.Where(c => context.OrientadorClasses
-                .Any(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == c.Id)),
-            _ => query.Where(_ => false)
-        };
-
-        var cls = await filtered.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
         return cls is null
             ? Result<ClassDto>.NotFound("Turma não encontrada.")
             : Result<ClassDto>.Success(ToDto(cls));
@@ -65,7 +48,14 @@ public class ClassService(IUnitOfWork unitOfWork, AppDbContext context, ICurrent
         if (!schoolExists)
             return Result<ClassDto>.NotFound("Escola não encontrada.");
 
+        var duplicate = await context.Classes
+            .AnyAsync(c => c.SchoolId == dto.SchoolId && c.Year == dto.Year && c.Name == dto.Name, cancellationToken);
+
+        if (duplicate)
+            return Result<ClassDto>.Conflict("Já existe uma turma com este nome neste ano.");
+
         var cls = new Class { Name = dto.Name, Year = dto.Year, SchoolId = dto.SchoolId };
+
         await unitOfWork.Repository<Class>().AddAsync(cls, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -77,40 +67,90 @@ public class ClassService(IUnitOfWork unitOfWork, AppDbContext context, ICurrent
     public async Task<Result<ClassDto>> UpdateAsync(Guid id, UpdateClassDto dto, CancellationToken cancellationToken = default)
     {
         var cls = await context.Classes.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+
         if (cls is null)
             return Result<ClassDto>.NotFound("Turma não encontrada.");
 
-        if (currentUser.Role == "Director" && cls.SchoolId != currentUser.SchoolId)
-            return Result<ClassDto>.Forbidden("Você não tem permissão para editar esta turma.");
+        if (currentUser.Role == "Director" && (cls.SchoolId != currentUser.SchoolId || dto.SchoolId != currentUser.SchoolId))
+            return Result<ClassDto>.Forbidden("Você não tem permissão para editar esta turma ou movê-la para outra escola.");
 
-        var schoolExists = await unitOfWork.Repository<School>()
-            .ExistsAsync(s => s.Id == dto.SchoolId, cancellationToken);
+        if (dto.SchoolId != cls.SchoolId)
+        {
+            var schoolExists = await unitOfWork.Repository<School>()
+                .ExistsAsync(s => s.Id == dto.SchoolId, cancellationToken);
 
-        if (!schoolExists)
-            return Result<ClassDto>.NotFound("Escola não encontrada.");
+            if (!schoolExists)
+                return Result<ClassDto>.NotFound("Escola não encontrada.");
+
+            // Professores, orientadores e alunos ficariam vinculados a uma turma de outra escola
+            var hasLinks = await context.Students.AnyAsync(s => s.ClassId == id, cancellationToken)
+                           || await context.TeacherClasses.AnyAsync(tc => tc.ClassId == id, cancellationToken)
+                           || await context.OrientadorClasses.AnyAsync(oc => oc.ClassId == id, cancellationToken);
+
+            if (hasLinks)
+                return Result<ClassDto>.Conflict("Não é possível mudar a escola de uma turma com alunos ou profissionais vinculados.");
+        }
+
+        var duplicate = await context.Classes
+            .AnyAsync(c => c.Id != id && c.SchoolId == dto.SchoolId && c.Year == dto.Year && c.Name == dto.Name, cancellationToken);
+
+        if (duplicate)
+            return Result<ClassDto>.Conflict("Já existe uma turma com este nome neste ano.");
 
         cls.Name = dto.Name;
         cls.Year = dto.Year;
         cls.SchoolId = dto.SchoolId;
         cls.IsActive = dto.IsActive;
+        cls.UpdatedAt = DateTime.UtcNow;
 
         unitOfWork.Repository<Class>().Update(cls);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+
         return await GetByIdAsync(id, cancellationToken);
     }
 
     public async Task<Result<bool>> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var cls = await context.Classes.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+
         if (cls is null)
             return Result<bool>.NotFound("Turma não encontrada.");
 
         if (currentUser.Role == "Director" && cls.SchoolId != currentUser.SchoolId)
             return Result<bool>.Forbidden("Você não tem permissão para remover esta turma.");
 
+        var hasHistory = await context.Students.AnyAsync(s => s.ClassId == id, cancellationToken)
+                         || await context.Grades.AnyAsync(g => g.ClassId == id, cancellationToken)
+                         || await context.Attendances.AnyAsync(a => a.ClassId == id, cancellationToken)
+                         || await context.PendingWorks.AnyAsync(p => p.ClassId == id, cancellationToken);
+
+        if (hasHistory)
+            return Result<bool>.Conflict("A turma possui alunos ou histórico (notas, chamadas, trabalhos). Desative-a em vez de excluir.");
+
         unitOfWork.Repository<Class>().Remove(cls);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+
         return Result<bool>.NoContent();
+    }
+
+    private IQueryable<Class> ScopedClasses()
+    {
+        var query = context.Classes.AsNoTracking().Include(c => c.School);
+
+        return currentUser.Role switch
+        {
+            "Admin" => query,
+            "Director" => query.Where(c => c.SchoolId == currentUser.SchoolId),
+            "Teacher" => query.Where(c => context.TeacherClasses
+                .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == c.Id)),
+            "Orientador" => query.Where(c => context.OrientadorClasses
+                .Any(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == c.Id)),
+            "Student" => query.Where(c => context.Students
+                .Any(s => s.Id == currentUser.StudentId && s.ClassId == c.Id)),
+            "Parent" => query.Where(c => context.ParentStudents
+                .Any(ps => ps.ParentId == currentUser.UserId && ps.Student.ClassId == c.Id)),
+            _ => query.Where(_ => false)
+        };
     }
 
     private static ClassDto ToDto(Class c) =>

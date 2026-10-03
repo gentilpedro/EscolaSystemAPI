@@ -5,7 +5,7 @@ namespace EscolaSystemApi.Application.Interfaces;
 
 public interface IPendingWorkService
 {
-    Task<Result<PagedResult<PendingWorkDto>>> GetAllAsync(PagedQuery query, CancellationToken cancellationToken = default);
+    Task<Result<PagedResult<PendingWorkDto>>> GetAllAsync(PagedQuery query, Guid? classId = null, Guid? studentId = null, CancellationToken cancellationToken = default);
     Task<Result<PendingWorkDto>> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Result<PendingWorkDto>> CreateAsync(CreatePendingWorkDto dto, CancellationToken cancellationToken = default);
     Task<Result<PendingWorkDto>> MarkAsDeliveredAsync(Guid id, CancellationToken cancellationToken = default);
