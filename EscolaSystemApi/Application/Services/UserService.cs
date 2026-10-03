@@ -132,6 +132,13 @@ public class UserService(
             if (dto.SchoolId != currentUser.SchoolId)
                 return Result<UserListDto>.Forbidden("Você não pode mover usuários para outra escola.");
         }
+        else if (dto.RoleId != user.RoleId && !RoleIds.Platform.Contains(dto.RoleId))
+        {
+            // Mesma regra da criação: perfis da escola são atribuídos pelo diretor.
+            // Manter o perfil atual (ex.: ativar/desativar) continua permitido.
+            return Result<UserListDto>.Forbidden(
+                "Administrador atribui apenas os perfis Administrador e Diretor. Os demais perfis são definidos pelo diretor da escola.");
+        }
 
         if (isSelf && !dto.IsActive)
             return Result<UserListDto>.BadRequest("Você não pode desativar sua própria conta.");

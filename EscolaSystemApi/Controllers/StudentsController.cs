@@ -11,8 +11,8 @@ namespace EscolaSystemApi.Controllers;
 public class StudentsController(IStudentService studentService) : BaseApiController
 {
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] PagedQuery query, [FromQuery] Guid? classId, [FromQuery] Guid? schoolId, CancellationToken cancellationToken)
-        => HandleResult(await studentService.GetAllAsync(query, classId, schoolId, cancellationToken));
+    public async Task<IActionResult> GetAll([FromQuery] PagedQuery query, [FromQuery] Guid? classId, [FromQuery] Guid? schoolId, [FromQuery] bool? isActive, CancellationToken cancellationToken)
+        => HandleResult(await studentService.GetAllAsync(query, classId, schoolId, isActive, cancellationToken));
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)

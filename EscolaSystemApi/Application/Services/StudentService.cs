@@ -10,7 +10,7 @@ namespace EscolaSystemApi.Application.Services;
 
 public class StudentService(IUnitOfWork unitOfWork, AppDbContext context, ICurrentUserService currentUser) : IStudentService
 {
-    public async Task<Result<PagedResult<StudentDto>>> GetAllAsync(PagedQuery query, Guid? classId = null, Guid? schoolId = null, CancellationToken cancellationToken = default)
+    public async Task<Result<PagedResult<StudentDto>>> GetAllAsync(PagedQuery query, Guid? classId = null, Guid? schoolId = null, bool? isActive = null, CancellationToken cancellationToken = default)
     {
         var filtered = ScopedStudents();
 
@@ -18,6 +18,8 @@ public class StudentService(IUnitOfWork unitOfWork, AppDbContext context, ICurre
             filtered = filtered.Where(s => s.ClassId == classId.Value);
         if (schoolId.HasValue)
             filtered = filtered.Where(s => s.Class.SchoolId == schoolId.Value);
+        if (isActive.HasValue)
+            filtered = filtered.Where(s => s.IsActive == isActive.Value);
 
         var totalCount = await filtered.CountAsync(cancellationToken);
         var totalPages = (int)Math.Ceiling(totalCount / (double)query.PageSize);
