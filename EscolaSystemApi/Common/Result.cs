@@ -23,4 +23,5 @@ public sealed class Result<T>
     public static Result<T> Forbidden(string error) => new(false, default, error, 403);
     public static Result<T> Conflict(string error) => new(false, default, error, 409);
     public static Result<T> Unauthorized(string error) => new(false, default, error, 401);
+    public static Result<T> TooManyRequests(string error) => new(false, default, error, 429);
 }

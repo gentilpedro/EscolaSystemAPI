@@ -10,6 +10,9 @@ namespace EscolaSystemApi.Application.Services;
 
 public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbContext context) : IAuthService
 {
+    public const int MaxFailedLoginAttempts = 5;
+    public static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(15);
+
     public async Task<Result<AuthResponseDto>> LoginAsync(LoginRequestDto dto, CancellationToken cancellationToken = default)
     {
         var user = await context.Users
@@ -17,8 +20,36 @@ public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbCo
             .Include(u => u.School)
             .FirstOrDefaultAsync(u => u.Email == dto.Email && u.IsActive, cancellationToken);
 
-        if (user is null || !BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
+        if (user is null)
             return Result<AuthResponseDto>.Unauthorized("Credenciais inválidas.");
+
+        // Bloqueio por conta: protege a senha sem travar a escola inteira, que costuma sair por um único IP
+        if (user.LockoutEndsAt > DateTime.UtcNow)
+        {
+            var minutes = (int)Math.Ceiling((user.LockoutEndsAt.Value - DateTime.UtcNow).TotalMinutes);
+            return Result<AuthResponseDto>.TooManyRequests(
+                $"Conta bloqueada por excesso de tentativas. Tente novamente em {minutes} minuto(s).");
+        }
+
+        if (!BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
+        {
+            user.FailedLoginAttempts++;
+            if (user.FailedLoginAttempts >= MaxFailedLoginAttempts)
+            {
+                user.FailedLoginAttempts = 0;
+                user.LockoutEndsAt = DateTime.UtcNow.Add(LockoutDuration);
+            }
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+            return Result<AuthResponseDto>.Unauthorized("Credenciais inválidas.");
+        }
+
+        if (user.FailedLoginAttempts > 0 || user.LockoutEndsAt is not null)
+        {
+            user.FailedLoginAttempts = 0;
+            user.LockoutEndsAt = null;
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
 
         // Usuário de escola desativada não acessa o sistema
         if (user.School is { IsActive: false })
@@ -94,6 +125,8 @@ public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbCo
         }
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+        user.FailedLoginAttempts = 0;
+        user.LockoutEndsAt = null;
         unitOfWork.Repository<User>().Update(user);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
