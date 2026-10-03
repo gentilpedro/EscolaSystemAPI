@@ -100,7 +100,7 @@ dotnet test EscolaSystemApi.Tests/EscolaSystemApi.Tests.csproj
 
 Regras de criação e edição de usuários:
 
-- **Admin** cria e gerencia escolas, **Administradores** e **Diretores**. Não cria os perfis internos de uma escola.
+- **Admin** cria e gerencia escolas, **Administradores** e **Diretores**. Não cria os perfis internos de uma escola nem muda alguém para eles na edição (pode ativar ou desativar mantendo o perfil atual).
 - **Diretor** cria e gerencia Professor, Aluno, Responsável e Orientador **somente da própria escola**. Não edita Admins/outros diretores, não promove ninguém a Diretor e não move usuários, turmas ou alunos para outra escola.
 - Usuário com perfil **Aluno** precisa estar vinculado a um registro de aluno (`studentId`) da mesma escola, e cada aluno tem no máximo uma conta.
 - Professores/orientadores só podem ser vinculados a turmas da própria escola; responsável e aluno precisam ser da mesma escola.
@@ -164,7 +164,7 @@ A listagem retorna `classIds` (turmas de professor/orientador) e `studentIds` (f
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/?classId=&schoolId=` | Autenticado |
+| GET | `/?classId=&schoolId=&isActive=` | Autenticado (`isActive=true` traz só alunos ativos) |
 | GET | `/{id}` | Autenticado |
 | POST | `/` | Admin, Director |
 | PUT | `/{id}` | Admin, Director (transferência só entre turmas da mesma escola) |
@@ -179,6 +179,8 @@ A listagem retorna `classIds` (turmas de professor/orientador) e `studentIds` (f
 | POST | `/` | Admin, Teacher, Director |
 | PUT | `/{id}` | Admin, Teacher, Director |
 | DELETE | `/{id}` | Admin, Teacher, Director |
+
+Uma nota por aluno, turma, matéria e período (409 se repetir). Períodos aceitos: `1º Bimestre` a `4º Bimestre`, `Recuperação` e `Final` (`1° Bimestre` com símbolo de grau também é aceito).
 
 ### Frequência — `/api/attendance`
 

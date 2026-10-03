@@ -1,0 +1,163 @@
+using EscolaSystemApi.Application.DTOs.Grades;
+using EscolaSystemApi.Application.DTOs.Users;
+using EscolaSystemApi.Application.Services;
+using EscolaSystemApi.Application.Validators.Grades;
+using EscolaSystemApi.Common;
+using EscolaSystemApi.Domain.Entities;
+using EscolaSystemApi.Tests.Helpers;
+using FluentAssertions;
+using Xunit;
+
+namespace EscolaSystemApi.Tests.Services;
+
+public class BusinessRulesIssue10Tests
+{
+    // ---------- Edição de perfil pelo admin ----------
+
+    [Fact]
+    public async Task AdminUpdate_ChangingDirectorToTeacher_ReturnsForbidden()
+    {
+        var context = DbContextHelper.CreateInMemoryContext();
+        var school = DbContextHelper.CreateSchool(context);
+        var director = DbContextHelper.CreateDirectorUser(context, school.Id);
+        var service = new UserService(new UnitOfWork(context), context,
+            new CurrentUserServiceMock(Guid.NewGuid(), "Admin"), CpfEncryptionHelper.Create());
+
+        var result = await service.UpdateAsync(director.Id,
+            new UpdateUserDto(director.Name, director.Email, RoleIds.Teacher, school.Id, true));
+
+        result.StatusCode.Should().Be(403);
+    }
+
+    [Fact]
+    public async Task AdminUpdate_KeepingTeacherRole_DeactivatesNormally()
+    {
+        var context = DbContextHelper.CreateInMemoryContext();
+        var school = DbContextHelper.CreateSchool(context);
+        var teacher = DbContextHelper.CreateTeacherUser(context, school.Id);
+        var service = new UserService(new UnitOfWork(context), context,
+            new CurrentUserServiceMock(Guid.NewGuid(), "Admin"), CpfEncryptionHelper.Create());
+
+        var result = await service.UpdateAsync(teacher.Id,
+            new UpdateUserDto(teacher.Name, teacher.Email, RoleIds.Teacher, school.Id, false));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Data!.IsActive.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AdminUpdate_PromotingTeacherToDirector_IsAllowed()
+    {
+        var context = DbContextHelper.CreateInMemoryContext();
+        var school = DbContextHelper.CreateSchool(context);
+        var teacher = DbContextHelper.CreateTeacherUser(context, school.Id);
+        var service = new UserService(new UnitOfWork(context), context,
+            new CurrentUserServiceMock(Guid.NewGuid(), "Admin"), CpfEncryptionHelper.Create());
+
+        var result = await service.UpdateAsync(teacher.Id,
+            new UpdateUserDto(teacher.Name, teacher.Email, RoleIds.Director, school.Id, true));
+
+        result.IsSuccess.Should().BeTrue();
+    }
+
+    // ---------- Nota duplicada e período ----------
+
+    [Fact]
+    public async Task CreateGrade_SameSubjectAndPeriod_ReturnsConflict()
+    {
+        var context = DbContextHelper.CreateInMemoryContext();
+        var school = DbContextHelper.CreateSchool(context);
+        var cls = DbContextHelper.CreateClass(context, school.Id);
+        var student = DbContextHelper.CreateStudent(context, cls.Id);
+        DbContextHelper.CreateGrade(context, student.Id, cls.Id); // Matemática, 1° Bimestre
+        var service = new GradeService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
+
+        // Mesma matéria com outra caixa e o bimestre com "º" em vez de "°"
+        var result = await service.CreateAsync(new CreateGradeDto(student.Id, cls.Id, " matemática ", 9, "1º Bimestre"));
+
+        result.StatusCode.Should().Be(409);
+    }
+
+    [Fact]
+    public async Task CreateGrade_OtherPeriod_IsAllowed()
+    {
+        var context = DbContextHelper.CreateInMemoryContext();
+        var school = DbContextHelper.CreateSchool(context);
+        var cls = DbContextHelper.CreateClass(context, school.Id);
+        var student = DbContextHelper.CreateStudent(context, cls.Id);
+        DbContextHelper.CreateGrade(context, student.Id, cls.Id);
+        var service = new GradeService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
+
+        var result = await service.CreateAsync(new CreateGradeDto(student.Id, cls.Id, "Matemática", 7, "2º Bimestre"));
+
+        result.StatusCode.Should().Be(201);
+    }
+
+    [Fact]
+    public async Task UpdateGrade_IntoExistingSubjectAndPeriod_ReturnsConflict()
+    {
+        var context = DbContextHelper.CreateInMemoryContext();
+        var school = DbContextHelper.CreateSchool(context);
+        var cls = DbContextHelper.CreateClass(context, school.Id);
+        var student = DbContextHelper.CreateStudent(context, cls.Id);
+        DbContextHelper.CreateGrade(context, student.Id, cls.Id);
+        var service = new GradeService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
+        var other = await service.CreateAsync(new CreateGradeDto(student.Id, cls.Id, "Matemática", 7, "2º Bimestre"));
+
+        var result = await service.UpdateAsync(other.Data!.Id, new UpdateGradeDto("Matemática", 7, "1º Bimestre"));
+
+        result.StatusCode.Should().Be(409);
+    }
+
+    [Fact]
+    public async Task UpdateGrade_SameRecordSamePeriod_IsAllowed()
+    {
+        var context = DbContextHelper.CreateInMemoryContext();
+        var school = DbContextHelper.CreateSchool(context);
+        var cls = DbContextHelper.CreateClass(context, school.Id);
+        var student = DbContextHelper.CreateStudent(context, cls.Id);
+        var grade = DbContextHelper.CreateGrade(context, student.Id, cls.Id);
+        var service = new GradeService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
+
+        var result = await service.UpdateAsync(grade.Id, new UpdateGradeDto("Matemática", 9.5m, "1º Bimestre"));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Data!.Value.Should().Be(9.5m);
+    }
+
+    [Theory]
+    [InlineData("1º Bimestre", true)]
+    [InlineData("1° Bimestre", true)]
+    [InlineData("4º Bimestre", true)]
+    [InlineData("Recuperação", true)]
+    [InlineData("Final", true)]
+    [InlineData("5º Bimestre", false)]
+    [InlineData("Semestre 1", false)]
+    public void GradeValidator_AcceptsOnlySchoolPeriods(string period, bool valid)
+    {
+        var result = new CreateGradeValidator().Validate(new CreateGradeDto(Guid.NewGuid(), Guid.NewGuid(), "Matemática", 8, period));
+
+        result.IsValid.Should().Be(valid);
+    }
+
+    // ---------- Filtro de alunos ativos ----------
+
+    [Fact]
+    public async Task GetStudents_IsActiveFilter_ExcludesInactive()
+    {
+        var context = DbContextHelper.CreateInMemoryContext();
+        var school = DbContextHelper.CreateSchool(context);
+        var cls = DbContextHelper.CreateClass(context, school.Id);
+        DbContextHelper.CreateStudent(context, cls.Id);
+        var inactive = DbContextHelper.CreateStudent(context, cls.Id);
+        inactive.IsActive = false;
+        context.SaveChanges();
+        var service = new StudentService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
+
+        var active = await service.GetAllAsync(new PagedQuery(), cls.Id, isActive: true);
+        var all = await service.GetAllAsync(new PagedQuery(), cls.Id);
+
+        active.Data!.Items.Should().ContainSingle();
+        all.Data!.Items.Should().HaveCount(2);
+    }
+}

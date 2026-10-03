@@ -99,6 +99,9 @@ public class GradeService(IUnitOfWork unitOfWork, AppDbContext context, ICurrent
         if (currentUser.Role == "Director" && student.Class.SchoolId != currentUser.SchoolId)
             return Result<GradeDto>.Forbidden("Este aluno não pertence à sua escola.");
 
+        if (await HasDuplicateAsync(dto.StudentId, dto.ClassId, dto.Subject, dto.Period, null, cancellationToken))
+            return Result<GradeDto>.Conflict("Este aluno já tem nota nesta matéria e período. Edite a nota existente.");
+
         var grade = new Grade
         {
             StudentId = dto.StudentId,
@@ -135,6 +138,9 @@ public class GradeService(IUnitOfWork unitOfWork, AppDbContext context, ICurrent
         if (currentUser.Role == "Director" && grade.Class.SchoolId != currentUser.SchoolId)
             return Result<GradeDto>.Forbidden("Esta nota não pertence à sua escola.");
 
+        if (await HasDuplicateAsync(grade.StudentId, grade.ClassId, dto.Subject, dto.Period, grade.Id, cancellationToken))
+            return Result<GradeDto>.Conflict("Este aluno já tem nota nesta matéria e período.");
+
         grade.Subject = dto.Subject;
         grade.Value = dto.Value;
         grade.Period = dto.Period;
@@ -168,6 +174,19 @@ public class GradeService(IUnitOfWork unitOfWork, AppDbContext context, ICurrent
         unitOfWork.Repository<Grade>().Remove(grade);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<bool>.Success(true);
+    }
+
+    // Uma nota por aluno, turma, matéria e período; matéria sem diferenciar maiúsculas
+    private async Task<bool> HasDuplicateAsync(Guid studentId, Guid classId, string subject, string period, Guid? ignoreId, CancellationToken cancellationToken)
+    {
+        var normalizedSubject = subject.Trim().ToLower();
+        var candidates = await context.Grades.AsNoTracking()
+            .Where(g => g.StudentId == studentId && g.ClassId == classId && g.Id != ignoreId
+                        && g.Subject.Trim().ToLower() == normalizedSubject)
+            .Select(g => g.Period)
+            .ToListAsync(cancellationToken);
+
+        return candidates.Any(p => GradePeriods.AreSame(p, period));
     }
 
     private static GradeDto ToDto(Grade g) =>
