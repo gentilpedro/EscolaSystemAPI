@@ -195,7 +195,7 @@ public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbCo
         return Result<UserDto>.Success(ToDto(user));
     }
 
-    public async Task<Result<bool>> ResetPasswordAsync(ResetPasswordDto dto, Guid requestingUserId, Guid? currentSessionId = null, CancellationToken cancellationToken = default)
+    public async Task<Result<bool>> ResetPasswordAsync(ResetPasswordDto dto, Guid requestingUserId, CancellationToken cancellationToken = default)
     {
         var user = await context.Users
             .Include(u => u.Role)
@@ -205,24 +205,63 @@ public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbCo
         if (user is null)
             return Result<bool>.NotFound("Usuário não encontrado.");
 
-        if (user.Id != requestingUserId)
-        {
-            var requestingUser = await context.Users
-                .Include(u => u.Role)
-                .FirstOrDefaultAsync(u => u.Id == requestingUserId, cancellationToken);
+        // A própria senha só muda com a senha atual: uma sessão esquecida aberta não basta para tomar a conta
+        if (user.Id == requestingUserId)
+            return Result<bool>.BadRequest("Para trocar a sua senha, informe a senha atual em /api/auth/change-password.");
 
-            if (!CanResetPasswordOf(requestingUser, user))
-                return Result<bool>.Forbidden("Sem permissão para alterar a senha deste usuário.");
-        }
+        var requestingUser = await context.Users
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.Id == requestingUserId, cancellationToken);
+
+        if (!CanResetPasswordOf(requestingUser, user))
+            return Result<bool>.Forbidden("Sem permissão para alterar a senha deste usuário.");
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
         user.FailedLoginAttempts = 0;
         user.LockoutEndsAt = null;
         unitOfWork.Repository<User>().Update(user);
-        // Senha nova derruba as outras sessões da conta (quem trocou a própria senha continua logado)
-        await UserSessions.RevokeAllAsync(context, user.Id, user.Id == requestingUserId ? currentSessionId : null, cancellationToken);
+        // Senha redefinida por outra pessoa derruba todas as sessões da conta
+        await UserSessions.RevokeAllAsync(context, user.Id, cancellationToken: cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
+        return Result<bool>.Success(true);
+    }
+
+    public async Task<Result<bool>> ChangePasswordAsync(Guid userId, ChangePasswordDto dto, Guid? currentSessionId = null, CancellationToken cancellationToken = default)
+    {
+        var user = await context.Users.FirstOrDefaultAsync(u => u.Id == userId && u.IsActive, cancellationToken);
+        if (user is null)
+            return Result<bool>.NotFound("Usuário não encontrado.");
+
+        // Mesmo bloqueio do login: a senha atual não pode ser descoberta por tentativa
+        if (user.LockoutEndsAt > DateTime.UtcNow)
+        {
+            var minutes = (int)Math.Ceiling((user.LockoutEndsAt.Value - DateTime.UtcNow).TotalMinutes);
+            return Result<bool>.TooManyRequests($"Conta bloqueada por excesso de tentativas. Tente novamente em {minutes} minuto(s).");
+        }
+
+        if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
+        {
+            user.FailedLoginAttempts++;
+            if (user.FailedLoginAttempts >= MaxFailedLoginAttempts)
+            {
+                user.FailedLoginAttempts = 0;
+                user.LockoutEndsAt = DateTime.UtcNow.Add(LockoutDuration);
+            }
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+            // 400, e não 401: a sessão continua válida, só a senha informada está errada
+            return Result<bool>.BadRequest("Senha atual incorreta.");
+        }
+
+        if (BCrypt.Net.BCrypt.Verify(dto.NewPassword, user.PasswordHash))
+            return Result<bool>.BadRequest("A nova senha precisa ser diferente da atual.");
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
+        user.FailedLoginAttempts = 0;
+        user.LockoutEndsAt = null;
+        // As outras sessões (outro navegador, outro aparelho) caem; quem trocou continua logado
+        await UserSessions.RevokeAllAsync(context, user.Id, currentSessionId, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<bool>.Success(true);
     }
 

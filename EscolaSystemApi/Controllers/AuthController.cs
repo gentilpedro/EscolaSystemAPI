@@ -76,6 +76,19 @@ public class AuthController(IAuthService authService, AuthCookies cookies) : Bas
         return NoContent();
     }
 
+    [HttpPost("change-password")]
+    [Authorize]
+    [EnableRateLimiting("AuthPolicy")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto, CancellationToken cancellationToken)
+    {
+        var validation = await new ChangePasswordDtoValidator().ValidateAsync(dto, cancellationToken);
+        if (!validation.IsValid)
+            return ValidationFailed(validation);
+
+        return HandleResult(await authService.ChangePasswordAsync(CurrentUserId, dto, CurrentSessionId, cancellationToken));
+    }
+
+    // Senha de outra pessoa: admin (qualquer uma) ou diretor (da própria escola)
     [HttpPost("reset-password")]
     [Authorize]
     [EnableRateLimiting("AuthPolicy")]
@@ -86,6 +99,6 @@ public class AuthController(IAuthService authService, AuthCookies cookies) : Bas
         if (!validation.IsValid)
             return ValidationFailed(validation);
 
-        return HandleResult(await authService.ResetPasswordAsync(dto, CurrentUserId, CurrentSessionId, cancellationToken));
+        return HandleResult(await authService.ResetPasswordAsync(dto, CurrentUserId, cancellationToken));
     }
 }
