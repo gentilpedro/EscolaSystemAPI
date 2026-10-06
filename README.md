@@ -176,7 +176,8 @@ O login não devolve o token no corpo. A API grava três cookies, todos `SameSit
 | POST | `/register` | Admin | Cria **outro Admin** (`roleId: 1`) e devolve os dados dele. Demais perfis: `/api/users` |
 | GET | `/me` | Autenticado | Dados do usuário logado (inclui `schoolName` e `studentId`) |
 | POST | `/logout` | Sessão (acesso ou refresh) | Revoga a sessão e apaga os cookies |
-| POST | `/reset-password` | Autenticado | Própria senha; Admin altera qualquer uma; Diretor altera a dos membros da sua escola |
+| POST | `/change-password` | Autenticado | Troca a **própria** senha com `currentPassword` e `newPassword`. Senha atual errada: 400 e conta para o bloqueio por tentativas. Encerra as outras sessões e mantém a atual |
+| POST | `/reset-password` | Admin, Director | Redefine a senha de **outra** pessoa: Admin, qualquer uma; Diretor, a das pessoas da sua escola. Encerra todas as sessões da conta. Na própria conta responde 400 (use `/change-password`) |
 
 ### Escolas — `/api/schools`
 

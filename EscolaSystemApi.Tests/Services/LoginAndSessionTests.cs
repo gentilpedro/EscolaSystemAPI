@@ -89,8 +89,12 @@ public class LoginAndSessionTests
         var admin = DbContextHelper.CreateAdminUser(context);
         var service = CreateAuthService(context);
         await FailLoginsAsync(service, admin.Email, AuthService.MaxFailedLoginAttempts);
+        // Outro admin redefine a senha da conta bloqueada
+        var otherAdmin = new User { Name = "Outro Admin", Email = "outro.admin@test.com", PasswordHash = "x", RoleId = 1, IsActive = true };
+        context.Users.Add(otherAdmin);
+        context.SaveChanges();
 
-        await service.ResetPasswordAsync(new ResetPasswordDto(admin.Email, "Nova@1234"), admin.Id);
+        await service.ResetPasswordAsync(new ResetPasswordDto(admin.Email, "Nova@1234"), otherAdmin.Id);
         var result = await service.LoginAsync(new LoginRequestDto(admin.Email, "Nova@1234"));
 
         result.IsSuccess.Should().BeTrue();

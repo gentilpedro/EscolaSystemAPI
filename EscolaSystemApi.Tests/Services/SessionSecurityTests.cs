@@ -144,7 +144,7 @@ public class SessionSecurityTests
     }
 
     [Fact]
-    public async Task ResetOwnPassword_KeepsCurrentSessionAndRevokesOthers()
+    public async Task ChangeOwnPassword_KeepsCurrentSessionAndRevokesOthers()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var (service, admin, _) = await LoginAsync(context);
@@ -152,7 +152,7 @@ public class SessionSecurityTests
         var sessions = context.UserSessions.OrderBy(s => s.CreatedAt).ToList();
         var current = sessions[0].Id;
 
-        await service.ResetPasswordAsync(new ResetPasswordDto(admin.Email, "Nova@1234"), admin.Id, current);
+        (await service.ChangePasswordAsync(admin.Id, new ChangePasswordDto("Admin@123", "Nova@1234"), current)).IsSuccess.Should().BeTrue();
 
         context.UserSessions.Single(s => s.Id == current).RevokedAt.Should().BeNull();
         context.UserSessions.Where(s => s.Id != current).Should().OnlyContain(s => s.RevokedAt != null);
