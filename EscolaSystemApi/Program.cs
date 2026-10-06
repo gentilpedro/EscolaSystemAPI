@@ -103,6 +103,8 @@ try
     if (!app.Environment.IsDevelopment())
         app.UseHttpsRedirection();
     app.UseRateLimiter();
+    // Depois do CORS (o preflight passa) e antes da autenticação
+    app.UseMiddleware<CsrfMiddleware>();
     app.UseAuthentication();
     app.UseAuthorization();
     app.MapControllers();

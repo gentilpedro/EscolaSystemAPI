@@ -17,6 +17,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ParentStudent> ParentStudents => Set<ParentStudent>();
     public DbSet<OrientadorClass> OrientadorClasses => Set<OrientadorClass>();
     public DbSet<Role> Roles => Set<Role>();
+    public DbSet<UserSession> UserSessions => Set<UserSession>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

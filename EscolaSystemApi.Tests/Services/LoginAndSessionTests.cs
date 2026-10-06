@@ -14,9 +14,7 @@ public class LoginAndSessionTests
 {
     private static AuthService CreateAuthService(AppDbContext context)
     {
-        var jwt = new Mock<IJwtService>();
-        jwt.Setup(x => x.GenerateToken(It.IsAny<User>())).Returns(("fake-token", DateTime.UtcNow.AddHours(1)));
-        return new AuthService(new UnitOfWork(context), jwt.Object, context);
+        return new AuthService(new UnitOfWork(context), JwtServiceMock.Create(), context);
     }
 
     private static async Task FailLoginsAsync(AuthService service, string email, int times)
@@ -107,7 +105,7 @@ public class LoginAndSessionTests
         var school = DbContextHelper.CreateSchool(context);
         var teacher = DbContextHelper.CreateTeacherUser(context, school.Id);
 
-        var valid = await new SessionValidator(context).IsValidAsync(teacher.Id, "Teacher", school.Id);
+        var valid = await new SessionValidator(context).IsValidAsync(teacher.Id, JwtServiceMock.CreateSession(context, teacher.Id).Id, "Teacher", school.Id);
 
         valid.Should().BeTrue();
     }
@@ -118,7 +116,7 @@ public class LoginAndSessionTests
         var context = DbContextHelper.CreateInMemoryContext();
         var admin = DbContextHelper.CreateAdminUser(context);
 
-        var valid = await new SessionValidator(context).IsValidAsync(admin.Id, "Admin", null);
+        var valid = await new SessionValidator(context).IsValidAsync(admin.Id, JwtServiceMock.CreateSession(context, admin.Id).Id, "Admin", null);
 
         valid.Should().BeTrue();
     }
@@ -132,7 +130,7 @@ public class LoginAndSessionTests
         teacher.IsActive = false;
         context.SaveChanges();
 
-        var valid = await new SessionValidator(context).IsValidAsync(teacher.Id, "Teacher", school.Id);
+        var valid = await new SessionValidator(context).IsValidAsync(teacher.Id, JwtServiceMock.CreateSession(context, teacher.Id).Id, "Teacher", school.Id);
 
         valid.Should().BeFalse();
     }
@@ -144,7 +142,7 @@ public class LoginAndSessionTests
         var school = DbContextHelper.CreateSchool(context);
         var teacher = DbContextHelper.CreateTeacherUser(context, school.Id);
 
-        var valid = await new SessionValidator(context).IsValidAsync(teacher.Id, "Director", school.Id);
+        var valid = await new SessionValidator(context).IsValidAsync(teacher.Id, JwtServiceMock.CreateSession(context, teacher.Id).Id, "Director", school.Id);
 
         valid.Should().BeFalse();
     }
@@ -157,7 +155,7 @@ public class LoginAndSessionTests
         var other = DbContextHelper.CreateSchool(context);
         var teacher = DbContextHelper.CreateTeacherUser(context, school.Id);
 
-        var valid = await new SessionValidator(context).IsValidAsync(teacher.Id, "Teacher", other.Id);
+        var valid = await new SessionValidator(context).IsValidAsync(teacher.Id, JwtServiceMock.CreateSession(context, teacher.Id).Id, "Teacher", other.Id);
 
         valid.Should().BeFalse();
     }
@@ -171,7 +169,7 @@ public class LoginAndSessionTests
         school.IsActive = false;
         context.SaveChanges();
 
-        var valid = await new SessionValidator(context).IsValidAsync(teacher.Id, "Teacher", school.Id);
+        var valid = await new SessionValidator(context).IsValidAsync(teacher.Id, JwtServiceMock.CreateSession(context, teacher.Id).Id, "Teacher", school.Id);
 
         valid.Should().BeFalse();
     }

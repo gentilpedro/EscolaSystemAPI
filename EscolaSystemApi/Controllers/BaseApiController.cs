@@ -14,6 +14,10 @@ public abstract class BaseApiController : ControllerBase
             ? id
             : Guid.Empty;
 
+    // Sessão do token de acesso (claim "sid"; o handler JWT pode mapeá-la para ClaimTypes.Sid)
+    protected Guid? CurrentSessionId =>
+        Guid.TryParse(User.FindFirstValue(ClaimTypes.Sid) ?? User.FindFirstValue("sid"), out var id) ? id : null;
+
     // "message" acompanha "error" para que o front exiba o motivo da falha
     protected IActionResult HandleResult<T>(Result<T> result) => result.StatusCode switch
     {

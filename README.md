@@ -6,7 +6,7 @@ REST API para gestão escolar multi-escola — autenticação JWT, controle de t
 
 - **Runtime:** .NET 9 / ASP.NET Core
 - **Banco:** PostgreSQL via Entity Framework Core (Npgsql)
-- **Auth:** JWT Bearer com revogação no logout
+- **Auth:** JWT em cookie httpOnly, refresh token com rotação, sessões revogáveis no banco e proteção CSRF
 - **Docs:** Scalar (`/scalar/v1`)
 - **Logs:** Serilog (console + arquivo em `logs/`)
 - **Validação:** FluentValidation
@@ -46,7 +46,10 @@ Configurações opcionais:
 
 | Chave | Padrão | Descrição |
 |---|---|---|
-| `Jwt:ExpirationInMinutes` | `60` | Validade do token |
+| `Jwt:AccessTokenMinutes` | `15` | Validade do token de acesso (o front renova sozinho pelo refresh) |
+| `Jwt:RefreshTokenDays` | `7` | Validade da sessão sem uso; cada renovação reinicia o prazo |
+| `Auth:CookieDomain` | vazio | Domínio dos cookies. Em produção com front e API em subdomínios (`app.` e `api.`), use o domínio comum, ex.: `escola.com.br` |
+| `Auth:SecureCookies` | `true` fora de Development | Cookies só por HTTPS. Em Development fica `false` para funcionar em `http://localhost` |
 | `RateLimiting:AuthPermitLimit` | `30` | Tentativas de login/reset por IP a cada 15 min |
 | `Cors:AllowedOrigins` | `localhost:3000`, `localhost:5173` | Origens do front (fora de Development só `https://`) |
 | `Database:MigrateOnStartup` | `true` | Aplica as migrations ao subir. Com várias instâncias, desligue e rode as migrations num passo de deploy |
@@ -123,19 +126,30 @@ Regras de criação e edição de usuários:
 
 ## Endpoints
 
-Todos os endpoints (exceto login) exigem o header:
-```
-Authorization: Bearer <token>
-```
+### Autenticação
+
+O login não devolve o token no corpo. A API grava três cookies, todos `SameSite=Strict` (e `Secure` fora de Development):
+
+| Cookie | Lido pelo JavaScript? | Para quê |
+|---|---|---|
+| `es_access` | Não (`HttpOnly`) | Token de acesso (JWT, 15 min), enviado em todas as requisições |
+| `es_refresh` | Não (`HttpOnly`), só vai para `/api/auth` | Refresh token (7 dias), trocado em `POST /api/auth/refresh` |
+| `es_csrf` | Sim | Token anti-CSRF: o front repete o valor no cabeçalho `X-CSRF-Token` |
+
+- O front chama a API com `credentials: 'include'`. Toda requisição que altera dados (POST, PUT, PATCH, DELETE) precisa do cabeçalho `X-CSRF-Token` igual ao cookie `es_csrf`, senão recebe **403**. O login é a exceção, porque é ele que emite o token.
+- Quando o token de acesso expira (401), o front chama `POST /api/auth/refresh`. A resposta traz cookies novos, e o refresh token anterior deixa de valer (rotação). Se esse refresh antigo for usado de novo depois de 30 s, a API trata como roubo e encerra **todas** as sessões do usuário. Dentro desses 30 s (duas abas renovando juntas), a resposta é **409**: basta repetir a requisição original.
+- Cada login cria uma sessão no banco (`UserSessions`; o refresh token fica só como hash em `RefreshTokens`). Logout, troca de senha (encerra as outras sessões) e desativação da conta revogam as sessões, e a API confere a sessão em toda requisição.
+- Ferramentas e integrações (Scalar, scripts) podem mandar `Authorization: Bearer <token>` com o valor do cookie `es_access`. Com o cabeçalho, o CSRF não é exigido, porque o navegador nunca envia esse cabeçalho sozinho.
 
 ### Auth — `/api/auth`
 
 | Método | Rota | Auth | Descrição |
 |---|---|---|---|
-| POST | `/login` | Público | Autenticar e obter token JWT |
-| POST | `/register` | Admin | Cria **outro Admin** (`roleId: 1`). Demais perfis: `/api/users` |
+| POST | `/login` | Público | Autentica e grava os cookies de sessão. Corpo: `expiresAt` e `user` |
+| POST | `/refresh` | Cookie `es_refresh` | Troca o refresh token por um par novo (401: entrar de novo; 409: repetir a requisição) |
+| POST | `/register` | Admin | Cria **outro Admin** (`roleId: 1`) e devolve os dados dele. Demais perfis: `/api/users` |
 | GET | `/me` | Autenticado | Dados do usuário logado (inclui `schoolName` e `studentId`) |
-| POST | `/logout` | Autenticado | Revoga o token atual |
+| POST | `/logout` | Sessão (acesso ou refresh) | Revoga a sessão e apaga os cookies |
 | POST | `/reset-password` | Autenticado | Própria senha; Admin altera qualquer uma; Diretor altera a dos membros da sua escola |
 
 ### Escolas — `/api/schools`
@@ -257,7 +271,7 @@ Erros de validação (`400`) incluem também `errors: string[]`. Erros internos 
 | Login, register e reset de senha | 30 req / 15 minutos **por IP** (configurável) |
 | Senha errada na mesma conta | 5 erros seguidos bloqueiam a conta por 15 minutos (429) |
 
-A cada requisição autenticada a API confere se o usuário continua ativo, com o mesmo perfil e a mesma escola, e se a escola está ativa. Se algo mudou, o token deixa de valer (401) e é preciso logar de novo.
+A cada requisição autenticada a API confere se a sessão não foi encerrada e se o usuário continua ativo, com o mesmo perfil e a mesma escola, e se a escola está ativa. Se algo mudou, o token deixa de valer (401): o front tenta renovar, e se a sessão acabou é preciso logar de novo.
 
 ---
 

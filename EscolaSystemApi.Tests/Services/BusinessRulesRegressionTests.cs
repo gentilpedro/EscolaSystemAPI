@@ -39,9 +39,7 @@ public class BusinessRulesRegressionTests
 
     private static AuthService CreateAuthService(AppDbContext context)
     {
-        var jwt = new Mock<IJwtService>();
-        jwt.Setup(x => x.GenerateToken(It.IsAny<User>())).Returns(("fake-token", DateTime.UtcNow.AddHours(1)));
-        return new AuthService(new UnitOfWork(context), jwt.Object, context);
+        return new AuthService(new UnitOfWork(context), JwtServiceMock.Create(), context);
     }
 
     private static UserService CreateUserService(AppDbContext context, ICurrentUserService currentUser)
