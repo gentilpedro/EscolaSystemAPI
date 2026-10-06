@@ -35,8 +35,8 @@ public static class DbSeeder
             admin.PasswordHash = BCrypt.Net.BCrypt.HashPassword(DefaultAdminPassword);
         }
 
-        // Contas de exemplo das migrations: perfis inconsistentes e sem escola. Ficam inativas
-        // enquanto ninguém tiver definido uma senha real para elas.
+        // Contas de exemplo das migrations antigas (perfis trocados). A migration RemoveExampleAccounts
+        // apaga as que nunca foram usadas; as que sobraram ficam inativas enquanto tiverem a senha de fábrica.
         var exampleAccounts = await db.Users
             .Where(u => u.Id != AdminId && u.PasswordHash == MigrationSeedHash && u.IsActive)
             .ToListAsync();

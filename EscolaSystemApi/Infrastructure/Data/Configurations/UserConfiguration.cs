@@ -32,7 +32,8 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasForeignKey<User>(x => x.StudentId)
             .OnDelete(DeleteBehavior.SetNull);
 
-        // Hash da senha de fábrica do admin (documentada no README, só para desenvolvimento)
+        // Hash da senha de fábrica do admin (documentada no README, só para desenvolvimento).
+        // As contas de exemplo antigas (professor@, aluno@, responsavel@escolasystem.com) saíram: tinham perfis trocados.
         const string passwordHash = "$2a$11$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi";
 
         builder.HasData(
@@ -43,36 +44,6 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
                 Email = "admin@escolasystem.com",
                 PasswordHash = passwordHash,
                 RoleId = 1,
-                IsActive = true,
-                CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)
-            },
-            new User
-            {
-                Id = Guid.Parse("00000000-0000-0000-0000-000000000002"),
-                Name = "Professor Exemplo",
-                Email = "professor@escolasystem.com",
-                PasswordHash = passwordHash,
-                RoleId = 2,
-                IsActive = true,
-                CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)
-            },
-            new User
-            {
-                Id = Guid.Parse("00000000-0000-0000-0000-000000000003"),
-                Name = "Aluno Exemplo",
-                Email = "aluno@escolasystem.com",
-                PasswordHash = passwordHash,
-                RoleId = 3,
-                IsActive = true,
-                CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)
-            },
-            new User
-            {
-                Id = Guid.Parse("00000000-0000-0000-0000-000000000004"),
-                Name = "Responsável Exemplo",
-                Email = "responsavel@escolasystem.com",
-                PasswordHash = passwordHash,
-                RoleId = 4,
                 IsActive = true,
                 CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)
             }
