@@ -16,7 +16,7 @@ public class UserService(
 {
     private bool IsDirector => currentUser.Role == "Director";
 
-    public async Task<Result<PagedResult<UserListDto>>> GetAllAsync(PagedQuery query, Guid? schoolId = null, int? roleId = null, CancellationToken cancellationToken = default)
+    public async Task<Result<PagedResult<UserListDto>>> GetAllAsync(PagedQuery query, Guid? schoolId = null, int? roleId = null, string? search = null, bool? isActive = null, CancellationToken cancellationToken = default)
     {
         var filtered = ScopedUsers();
 
@@ -24,6 +24,14 @@ public class UserService(
             filtered = filtered.Where(u => u.SchoolId == schoolId.Value);
         if (roleId.HasValue)
             filtered = filtered.Where(u => u.RoleId == roleId.Value);
+        if (isActive.HasValue)
+            filtered = filtered.Where(u => u.IsActive == isActive.Value);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            // Trecho do nome ou do e-mail, sem diferenciar maiúsculas
+            var term = search.Trim().ToLower();
+            filtered = filtered.Where(u => u.Name.ToLower().Contains(term) || u.Email.ToLower().Contains(term));
+        }
 
         var totalCount = await filtered.CountAsync(cancellationToken);
         var totalPages = (int)Math.Ceiling(totalCount / (double)query.PageSize);

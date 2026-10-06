@@ -12,8 +12,10 @@ namespace EscolaSystemApi.Controllers;
 public class UsersController(IUserService userService) : BaseApiController
 {
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] PagedQuery query, [FromQuery] Guid? schoolId, [FromQuery] int? roleId, CancellationToken cancellationToken)
-        => HandleResult(await userService.GetAllAsync(query, schoolId, roleId, cancellationToken));
+    public async Task<IActionResult> GetAll(
+        [FromQuery] PagedQuery query, [FromQuery] Guid? schoolId, [FromQuery] int? roleId,
+        [FromQuery] string? search, [FromQuery] bool? isActive, CancellationToken cancellationToken)
+        => HandleResult(await userService.GetAllAsync(query, schoolId, roleId, search, isActive, cancellationToken));
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
