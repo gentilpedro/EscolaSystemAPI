@@ -13,6 +13,9 @@ public static class RoleIds
     // Perfis que o diretor gerencia dentro da escola
     public static readonly int[] SchoolMembers = [Teacher, Student, Parent, Orientador];
 
+    // Perfis que podem estar em mais de uma escola ao mesmo tempo (diretor e aluno têm uma só)
+    public static readonly int[] MultiSchool = [Teacher, Orientador, Parent];
+
     // Perfis que o administrador da plataforma gerencia
     public static readonly int[] Platform = [Admin, Director];
 }

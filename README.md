@@ -141,7 +141,11 @@ Regras de criação e edição de usuários:
 - **Admin** cria e gerencia escolas, **Administradores** e **Diretores**. Não cria os perfis internos de uma escola nem muda alguém para eles na edição (pode ativar ou desativar mantendo o perfil atual).
 - **Diretor** cria e gerencia Professor, Aluno, Responsável e Orientador **somente da própria escola**. Não edita Admins/outros diretores, não promove ninguém a Diretor e não move usuários, turmas ou alunos para outra escola.
 - Usuário com perfil **Aluno** precisa estar vinculado a um registro de aluno (`studentId`) da mesma escola, e cada aluno tem no máximo uma conta.
-- Professores/orientadores só podem ser vinculados a turmas da própria escola; responsável e aluno precisam ser da mesma escola.
+- **Professor, orientador e responsável podem estar em várias escolas** (`SchoolMemberships`). A escola é adicionada pelo diretor dela com o e-mail da pessoa (`POST /api/schools/{id}/members`), sem criar outra conta. Diretor e aluno têm uma escola só.
+- Professores e orientadores só são vinculados a turmas de escolas em que estão; o responsável só é vinculado a aluno de escola em que está.
+- **Sair de uma escola não apaga nada**: encerra o vínculo com a escola e os vínculos da pessoa com as turmas e os alunos dela (`EndedAt`), e o acesso aos dados daquela escola acaba na hora. A conta só é desativada quando a pessoa não tem mais nenhuma escola ativa. Quando o diretor "desativa" um professor, orientador ou responsável, a pessoa sai só da escola dele.
+- Desvincular de turma ou aluno também encerra o vínculo em vez de apagar; vincular de novo reabre o mesmo registro.
+- A edição de usuário não muda a escola de professor, orientador e responsável: isso é feito pelos vínculos.
 - Exclusão de usuário é lógica (desativa), preservando histórico.
 
 ---
@@ -197,7 +201,14 @@ O login não devolve o token no corpo. A API grava três cookies, todos `SameSit
 | POST/DELETE | `/{parentId}/assign-student/{studentId}` | Admin, Director |
 | POST/DELETE | `/{orientadorId}/assign-orientador-class/{classId}` | Admin, Director |
 
-A listagem retorna `classIds` (turmas de professor/orientador) e `studentIds` (filhos do responsável). No `PUT`, `cpf: null` mantém o CPF atual e `cpf: ""` remove.
+A listagem retorna `classIds` (turmas de professor/orientador), `studentIds` (filhos do responsável) e `schools` (escolas com vínculo ativo). O filtro `schoolId` e o escopo do diretor consideram todas as escolas da pessoa. No `PUT`, `cpf: null` mantém o CPF atual e `cpf: ""` remove.
+
+### Pessoas da escola — `/api/schools/{schoolId}/members`
+
+| Método | Rota | Auth |
+|---|---|---|
+| POST | `/` com `{ "email": "..." }` | Admin, Director (da escola) — professor, orientador ou responsável já cadastrado entra na escola |
+| DELETE | `/{userId}` | Admin, Director (da escola) — a pessoa sai da escola (vínculos encerrados, histórico mantido) |
 
 ### Turmas — `/api/classes`
 

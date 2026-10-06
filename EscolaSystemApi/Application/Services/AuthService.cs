@@ -199,6 +199,7 @@ public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbCo
     {
         var user = await context.Users
             .Include(u => u.Role)
+            .Include(u => u.SchoolMemberships)
             .FirstOrDefaultAsync(u => u.Email == dto.Email && u.IsActive, cancellationToken);
 
         if (user is null)
@@ -229,8 +230,10 @@ public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbCo
     private static bool CanResetPasswordOf(User? requester, User target) => requester?.Role?.Name switch
     {
         "Admin" => true,
-        "Director" => target.SchoolId == requester.SchoolId
-                      && target.SchoolId is not null
+        // Diretor: pessoas da própria escola (principal ou com vínculo ativo nela)
+        "Director" => requester.SchoolId is not null
+                      && (target.SchoolId == requester.SchoolId
+                          || target.SchoolMemberships.Any(m => m.SchoolId == requester.SchoolId && m.EndedAt == null))
                       && target.Role?.Name is not ("Admin" or "Director"),
         _ => false
     };

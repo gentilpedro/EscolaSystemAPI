@@ -13,5 +13,9 @@ public sealed record UserListDto(
     string? Phone = null,
     Guid? StudentId = null,
     IReadOnlyList<Guid>? ClassIds = null,
-    IReadOnlyList<Guid>? StudentIds = null
+    IReadOnlyList<Guid>? StudentIds = null,
+    // Escolas em que a pessoa tem vínculo ativo (professor, orientador e responsável podem ter várias)
+    IReadOnlyList<SchoolRefDto>? Schools = null
 );
+
+public sealed record SchoolRefDto(Guid Id, string Name);

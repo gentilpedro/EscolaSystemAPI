@@ -21,4 +21,5 @@ public class User : BaseEntity
     public ICollection<TeacherClass> TeacherClasses { get; set; } = [];
     public ICollection<ParentStudent> ParentStudents { get; set; } = [];
     public ICollection<OrientadorClass> OrientadorClasses { get; set; } = [];
+    public ICollection<SchoolMembership> SchoolMemberships { get; set; } = [];
 }
