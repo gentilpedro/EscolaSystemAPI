@@ -51,6 +51,7 @@ Configurações opcionais:
 | `Auth:CookieDomain` | vazio | Domínio dos cookies. Em produção com front e API em subdomínios (`app.` e `api.`), use o domínio comum, ex.: `escola.com.br` |
 | `Auth:SecureCookies` | `true` fora de Development | Cookies só por HTTPS. Em Development fica `false` para funcionar em `http://localhost` |
 | `RateLimiting:AuthPermitLimit` | `30` | Tentativas de login/reset por IP a cada 15 min |
+| `RateLimiting:GlobalPermitLimit` | `200` | Requisições por IP a cada minuto. Uma escola costuma sair por um IP só: aumente conforme o número de pessoas usando ao mesmo tempo |
 | `Cors:AllowedOrigins` | `localhost:3000`, `localhost:5173` | Origens do front (fora de Development só `https://`) |
 | `Database:MigrateOnStartup` | `true` | Aplica as migrations ao subir. Com várias instâncias, desligue e rode as migrations num passo de deploy |
 | `Database:CommandTimeoutSeconds` | `30` | Tempo máximo de cada comando no banco. Falhas transitórias de conexão são repetidas até 3 vezes |
@@ -272,7 +273,7 @@ Erros de validação (`400`) incluem também `errors: string[]`. Erros internos 
 
 | Política | Limite |
 |---|---|
-| Global | 200 req / minuto por IP |
+| Global | 200 req / minuto por IP (configurável) |
 | Login, register e reset de senha | 30 req / 15 minutos **por IP** (configurável) |
 | Senha errada na mesma conta | 5 erros seguidos bloqueiam a conta por 15 minutos (429) |
 

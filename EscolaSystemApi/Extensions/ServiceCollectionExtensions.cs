@@ -162,6 +162,8 @@ public static class ServiceCollectionExtensions
         // Limite por IP alto o bastante para uma escola inteira atrás de um único IP;
         // a proteção de senha fica no bloqueio por conta (AuthService)
         var authPermitLimit = configuration.GetValue("RateLimiting:AuthPermitLimit", 30);
+        // Uma escola inteira costuma sair por um IP só: ajuste ao número de pessoas usando ao mesmo tempo
+        var globalPermitLimit = configuration.GetValue("RateLimiting:GlobalPermitLimit", 200);
 
         services.AddRateLimiter(options =>
         {
@@ -178,13 +180,13 @@ public static class ServiceCollectionExtensions
                         QueueLimit = 0
                     }));
 
-            // Global policy: 200 requests per minute per IP
+            // Limite global por IP a cada minuto (RateLimiting:GlobalPermitLimit)
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
                 RateLimitPartition.GetFixedWindowLimiter(
                     partitionKey: ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                     factory: _ => new FixedWindowRateLimiterOptions
                     {
-                        PermitLimit = 200,
+                        PermitLimit = globalPermitLimit,
                         Window = TimeSpan.FromMinutes(1),
                         QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                         QueueLimit = 0
