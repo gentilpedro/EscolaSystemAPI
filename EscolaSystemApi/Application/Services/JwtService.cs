@@ -10,14 +10,19 @@ namespace EscolaSystemApi.Application.Services;
 
 public class JwtService(IConfiguration configuration) : IJwtService
 {
+    public const string SessionClaim = "sid";
+
     private readonly string _key = configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT Key not configured");
     private readonly string _issuer = configuration["Jwt:Issuer"] ?? "EscolaSystemApi";
     private readonly string _audience = configuration["Jwt:Audience"] ?? "EscolaSystemApiClient";
-    private readonly int _expirationMinutes = int.Parse(configuration["Jwt:ExpirationInMinutes"] ?? "60");
+    private readonly int _accessMinutes = configuration.GetValue("Jwt:AccessTokenMinutes", 15);
+    private readonly int _refreshDays = configuration.GetValue("Jwt:RefreshTokenDays", 7);
 
-    public (string Token, DateTime ExpiresAt) GenerateToken(User user)
+    public TimeSpan RefreshTokenLifetime => TimeSpan.FromDays(_refreshDays);
+
+    public (string Token, DateTime ExpiresAt) GenerateToken(User user, Guid sessionId)
     {
-        var expiresAt = DateTime.UtcNow.AddMinutes(_expirationMinutes);
+        var expiresAt = DateTime.UtcNow.AddMinutes(_accessMinutes);
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_key));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
@@ -29,6 +34,7 @@ public class JwtService(IConfiguration configuration) : IJwtService
             new Claim(ClaimTypes.Role, user.Role?.Name ?? "Unknown"),
             new Claim("schoolId", user.SchoolId?.ToString() ?? string.Empty),
             new Claim("studentId", user.StudentId?.ToString() ?? string.Empty),
+            new Claim(SessionClaim, sessionId.ToString()),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
@@ -40,33 +46,5 @@ public class JwtService(IConfiguration configuration) : IJwtService
             signingCredentials: credentials);
 
         return (new JwtSecurityTokenHandler().WriteToken(token), expiresAt);
-    }
-
-    public Guid? GetUserIdFromToken(string token)
-    {
-        var handler = new JwtSecurityTokenHandler();
-        if (!handler.CanReadToken(token)) return null;
-
-        try
-        {
-            var principal = handler.ValidateToken(token, new TokenValidationParameters
-            {
-                ValidateIssuerSigningKey = true,
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_key)),
-                ValidateIssuer = true,
-                ValidIssuer = _issuer,
-                ValidateAudience = true,
-                ValidAudience = _audience,
-                ValidateLifetime = true,
-                ClockSkew = TimeSpan.Zero
-            }, out _);
-
-            var sub = principal.FindFirstValue(JwtRegisteredClaimNames.Sub);
-            return Guid.TryParse(sub, out var id) ? id : null;
-        }
-        catch
-        {
-            return null;
-        }
     }
 }

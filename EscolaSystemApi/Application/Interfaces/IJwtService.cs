@@ -4,6 +4,7 @@ namespace EscolaSystemApi.Application.Interfaces;
 
 public interface IJwtService
 {
-    (string Token, DateTime ExpiresAt) GenerateToken(User user);
-    Guid? GetUserIdFromToken(string token);
+    // Token de acesso curto, ligado à sessão (claim "sid") que pode ser revogada
+    (string Token, DateTime ExpiresAt) GenerateToken(User user, Guid sessionId);
+    TimeSpan RefreshTokenLifetime { get; }
 }

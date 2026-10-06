@@ -198,6 +198,8 @@ public class UserService(
         user.UpdatedAt = DateTime.UtcNow;
 
         unitOfWork.Repository<User>().Update(user);
+        if (!dto.IsActive)
+            await UserSessions.RevokeAllAsync(context, user.Id, cancellationToken: cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         return await GetByIdAsync(id, cancellationToken);
@@ -220,6 +222,8 @@ public class UserService(
         user.IsActive = false;
         user.UpdatedAt = DateTime.UtcNow;
         unitOfWork.Repository<User>().Update(user);
+        // Conta desativada perde as sessões abertas, inclusive a renovação
+        await UserSessions.RevokeAllAsync(context, user.Id, cancellationToken: cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         return Result<bool>.NoContent();

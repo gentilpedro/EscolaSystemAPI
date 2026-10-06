@@ -9,6 +9,7 @@ using EscolaSystemApi.Application.Services;
 using EscolaSystemApi.Infrastructure.Data;
 using EscolaSystemApi.Infrastructure.HealthChecks;
 using EscolaSystemApi.Infrastructure.Repositories;
+using EscolaSystemApi.Infrastructure.Security;
 using EscolaSystemApi.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -63,7 +64,7 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
-        services.AddSingleton<ITokenBlacklistService, InMemoryTokenBlacklistService>();
+        services.AddSingleton<AuthCookies>();
         services.AddScoped<ICpfEncryptionService, CpfEncryptionService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<ISessionValidator, SessionValidator>();
@@ -104,20 +105,17 @@ public static class ServiceCollectionExtensions
 
                 options.Events = new JwtBearerEvents
                 {
+                    // O navegador manda o token no cookie httpOnly; ferramentas e integrações podem usar o cabeçalho Authorization
+                    OnMessageReceived = ctx =>
+                    {
+                        if (string.IsNullOrEmpty(ctx.Token) && !ctx.Request.Headers.ContainsKey("Authorization"))
+                            ctx.Token = ctx.Request.Cookies[AuthCookies.AccessCookie];
+                        return Task.CompletedTask;
+                    },
                     OnTokenValidated = async ctx =>
                     {
-                        var jti = ctx.Principal?.FindFirstValue(JwtRegisteredClaimNames.Jti);
-                        if (jti is not null)
-                        {
-                            var blacklist = ctx.HttpContext.RequestServices
-                                .GetRequiredService<ITokenBlacklistService>();
-                            if (await blacklist.IsRevokedAsync(jti))
-                            {
-                                ctx.Fail("Token revogado.");
-                                return;
-                            }
-                        }
-
+                        // Toda requisição confere no banco se a sessão não foi encerrada (logout, senha nova, conta desativada)
+                        var sid = ctx.Principal?.FindFirstValue(ClaimTypes.Sid) ?? ctx.Principal?.FindFirstValue(JwtService.SessionClaim);
                         var sub = ctx.Principal?.FindFirstValue(ClaimTypes.NameIdentifier)
                                   ?? ctx.Principal?.FindFirstValue(JwtRegisteredClaimNames.Sub);
                         var role = ctx.Principal?.FindFirstValue(ClaimTypes.Role) ?? string.Empty;
@@ -126,7 +124,8 @@ public static class ServiceCollectionExtensions
 
                         var sessionValidator = ctx.HttpContext.RequestServices.GetRequiredService<ISessionValidator>();
                         if (!Guid.TryParse(sub, out var userId)
-                            || !await sessionValidator.IsValidAsync(userId, role, schoolId, ctx.HttpContext.RequestAborted))
+                            || !Guid.TryParse(sid, out var sessionId)
+                            || !await sessionValidator.IsValidAsync(userId, sessionId, role, schoolId, ctx.HttpContext.RequestAborted))
                             ctx.Fail("Sessão não corresponde mais ao usuário.");
                     }
                 };

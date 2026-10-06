@@ -11,26 +11,23 @@ namespace EscolaSystemApi.Tests.Services;
 
 public class AuthServiceTests
 {
-    private static IJwtService CreateJwtServiceMock()
-    {
-        var mock = new Mock<IJwtService>();
-        mock.Setup(x => x.GenerateToken(It.IsAny<User>()))
-            .Returns(("fake-token", DateTime.UtcNow.AddHours(1)));
-        return mock.Object;
-    }
-
     [Fact]
-    public async Task LoginAsync_ValidCredentials_ReturnsToken()
+    public async Task LoginAsync_ValidCredentials_ReturnsTokensAndCreatesSession()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
         var user = DbContextHelper.CreateAdminUser(context);
 
-        var service = new AuthService(uow, CreateJwtServiceMock(), context);
+        var service = new AuthService(uow, JwtServiceMock.Create(), context);
         var result = await service.LoginAsync(new LoginRequestDto(user.Email, "Admin@123"));
 
         result.IsSuccess.Should().BeTrue();
-        result.Data!.Token.Should().Be("fake-token");
+        result.Data!.AccessToken.Should().Be("fake-token");
+        result.Data.RefreshToken.Should().NotBeNullOrWhiteSpace();
+        // O banco guarda só o hash do refresh token
+        var stored = context.RefreshTokens.Single();
+        stored.TokenHash.Should().Be(UserSessions.Hash(result.Data.RefreshToken)).And.NotBe(result.Data.RefreshToken);
+        context.UserSessions.Single().UserId.Should().Be(user.Id);
     }
 
     [Fact]
@@ -40,7 +37,7 @@ public class AuthServiceTests
         var uow = new UnitOfWork(context);
         var user = DbContextHelper.CreateAdminUser(context);
 
-        var service = new AuthService(uow, CreateJwtServiceMock(), context);
+        var service = new AuthService(uow, JwtServiceMock.Create(), context);
         var result = await service.LoginAsync(new LoginRequestDto(user.Email, "SenhaErrada"));
 
         result.IsSuccess.Should().BeFalse();
@@ -52,7 +49,7 @@ public class AuthServiceTests
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
-        var service = new AuthService(uow, CreateJwtServiceMock(), context);
+        var service = new AuthService(uow, JwtServiceMock.Create(), context);
 
         var result = await service.LoginAsync(new LoginRequestDto("naoexiste@test.com", "Admin@123"));
 
@@ -65,7 +62,7 @@ public class AuthServiceTests
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
-        var service = new AuthService(uow, CreateJwtServiceMock(), context);
+        var service = new AuthService(uow, JwtServiceMock.Create(), context);
 
         var dto = new RegisterRequestDto("Novo User", "novo@test.com", "Admin@123", 1);
         var result = await service.RegisterAsync(dto);
@@ -79,7 +76,7 @@ public class AuthServiceTests
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
-        var service = new AuthService(uow, CreateJwtServiceMock(), context);
+        var service = new AuthService(uow, JwtServiceMock.Create(), context);
 
         var dto = new RegisterRequestDto("User", "user@test.com", "Admin@123", 1);
         await service.RegisterAsync(dto);
@@ -95,7 +92,7 @@ public class AuthServiceTests
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
         var user = DbContextHelper.CreateAdminUser(context);
-        var service = new AuthService(uow, CreateJwtServiceMock(), context);
+        var service = new AuthService(uow, JwtServiceMock.Create(), context);
 
         var result = await service.GetMeAsync(user.Id);
 
@@ -108,7 +105,7 @@ public class AuthServiceTests
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
-        var service = new AuthService(uow, CreateJwtServiceMock(), context);
+        var service = new AuthService(uow, JwtServiceMock.Create(), context);
 
         var result = await service.GetMeAsync(Guid.NewGuid());
 
