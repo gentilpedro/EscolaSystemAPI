@@ -10,6 +10,9 @@ namespace EscolaSystemApi.Application.Services;
 
 public class StudentService(IUnitOfWork unitOfWork, AppDbContext context, ICurrentUserService currentUser) : IStudentService
 {
+    // Regras de visibilidade por perfil (quem enxerga o quê) ficam no AccessScope
+    private readonly AccessScope scope = new(context, currentUser);
+
     public async Task<Result<PagedResult<StudentDto>>> GetAllAsync(PagedQuery query, Guid? classId = null, Guid? schoolId = null, bool? isActive = null, CancellationToken cancellationToken = default)
     {
         var filtered = ScopedStudents();
@@ -146,24 +149,8 @@ public class StudentService(IUnitOfWork unitOfWork, AppDbContext context, ICurre
         return Result<bool>.NoContent();
     }
 
-    private IQueryable<Student> ScopedStudents()
-    {
-        var query = context.Students.AsNoTracking().Include(s => s.Class).ThenInclude(c => c.School);
-
-        return currentUser.Role switch
-        {
-            "Admin" => query,
-            "Director" => query.Where(s => s.Class.SchoolId == currentUser.SchoolId),
-            "Teacher" => query.Where(s => context.TeacherClasses
-                .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == s.ClassId)),
-            "Orientador" => query.Where(s => context.OrientadorClasses
-                .Any(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == s.ClassId)),
-            "Student" => query.Where(s => s.Id == currentUser.StudentId),
-            "Parent" => query.Where(s => context.ParentStudents
-                .Any(ps => ps.ParentId == currentUser.UserId && ps.StudentId == s.Id)),
-            _ => query.Where(_ => false)
-        };
-    }
+    private IQueryable<Student> ScopedStudents() =>
+        scope.Students().AsNoTracking().Include(s => s.Class).ThenInclude(c => c.School);
 
     private static StudentDto ToDto(Student s) =>
         new(s.Id, s.Name, s.Email, s.Registration, s.BirthDate, s.ClassId,

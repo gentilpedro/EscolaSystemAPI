@@ -7,6 +7,21 @@
 
 ---
 
+## Situação em outubro de 2026
+
+| # | Situação |
+|---|---|
+| A1, A2 | **Decisão: não fazer agora.** A API é um projeto só (as "camadas" são pastas) e o `DbContext` do EF Core já é unidade de trabalho e repositório. Criar repositórios especializados para os 11 services reescreveria toda a camada de aplicação sem ganho prático. Os testes usam o provedor InMemory do EF, então os services já são testáveis sem banco. Vale rever se a API for dividida em projetos (Application sem referência a EF) ou se surgir uma segunda forma de persistência. |
+| A3 | Resolvido: as regras de visibilidade por perfil, antes copiadas em 10 lugares, ficam no `AccessScope` (`Application/Services/AccessScope.cs`), com testes por perfil (`AccessScopeTests`). |
+| A4 | Mantido: o `JwtService` lê `IConfiguration` só na construção e é Singleton. |
+| E1, E3 | Resolvidos: `DbUpdateException` e `DbUpdateConcurrencyException` viram 409 no middleware. |
+| E2 | Resolvido: `UnauthorizedAccessException` vira 401 no middleware. |
+| E4 | Resolvido onde importa: o lançamento de trabalho para a turma grava todos os alunos numa única gravação. O cadastro de admin relê o usuário depois de salvar, uma leitura sem risco de estado parcial. |
+| L1, L2 | Resolvidos: `JwtService` Singleton; `UnitOfWork` não descarta mais o `DbContext`. |
+| L3 | Sem efeito prático: os repositórios genéricos só são obtidos pelo `IUnitOfWork`. |
+
+---
+
 ## Diagnóstico Rápido
 
 | # | Problema | Pilar | Severidade |

@@ -10,6 +10,9 @@ namespace EscolaSystemApi.Application.Services;
 
 public class PendingWorkService(IUnitOfWork unitOfWork, AppDbContext context, ICurrentUserService currentUser) : IPendingWorkService
 {
+    // Regras de visibilidade por perfil (quem enxerga o quê) ficam no AccessScope
+    private readonly AccessScope scope = new(context, currentUser);
+
     public async Task<Result<PagedResult<PendingWorkDto>>> GetAllAsync(PagedQuery query, Guid? classId = null, Guid? studentId = null, CancellationToken cancellationToken = default)
     {
         var filtered = ScopedWorks();
@@ -189,26 +192,8 @@ public class PendingWorkService(IUnitOfWork unitOfWork, AppDbContext context, IC
         _ => false
     };
 
-    private IQueryable<PendingWork> ScopedWorks()
-    {
-        var query = context.PendingWorks.AsNoTracking()
-            .Include(p => p.Student)
-            .Include(p => p.Class);
-
-        return currentUser.Role switch
-        {
-            "Admin" => query,
-            "Director" => query.Where(p => p.Class.SchoolId == currentUser.SchoolId),
-            "Teacher" => query.Where(p => context.TeacherClasses
-                .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == p.ClassId)),
-            "Orientador" => query.Where(p => context.OrientadorClasses
-                .Any(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == p.ClassId)),
-            "Student" => query.Where(p => p.StudentId == currentUser.StudentId),
-            "Parent" => query.Where(p => context.ParentStudents
-                .Any(ps => ps.ParentId == currentUser.UserId && ps.StudentId == p.StudentId)),
-            _ => query.Where(_ => false)
-        };
-    }
+    private IQueryable<PendingWork> ScopedWorks() =>
+        scope.PendingWorks().AsNoTracking().Include(p => p.Student).Include(p => p.Class);
 
     private static PendingWorkDto ToDto(PendingWork p) =>
         new(p.Id, p.StudentId, p.Student?.Name ?? string.Empty, p.ClassId, p.Class?.Name ?? string.Empty,
