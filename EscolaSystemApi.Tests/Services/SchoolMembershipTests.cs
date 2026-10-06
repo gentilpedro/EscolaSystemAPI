@@ -143,6 +143,67 @@ public class SchoolMembershipTests
         (await director2.DeleteAsync(w.Teacher.Id)).StatusCode.Should().Be(403);
     }
 
+    // ---------- Escola principal desativada ----------
+
+    private static async Task TeacherInBothSchoolsWithFirstDeactivated(World w)
+    {
+        var director2 = w.Users(w.Director2, "Director");
+        await director2.AddMemberAsync(w.School2.Id, w.Teacher.Email);
+        await director2.AssignClassAsync(w.Teacher.Id, w.ClassB.Id);
+        w.School1.IsActive = false;
+        w.Context.SaveChanges();
+    }
+
+    [Fact]
+    public async Task PrimarySchoolDeactivated_TeacherLogsInThroughTheOtherSchool()
+    {
+        var w = new World();
+        await TeacherInBothSchoolsWithFirstDeactivated(w);
+
+        var login = await new AuthService(new UnitOfWork(w.Context), JwtServiceMock.Create(), w.Context)
+            .LoginAsync(new LoginRequestDto(w.Teacher.Email, "Admin@123"));
+
+        login.IsSuccess.Should().BeTrue();
+        login.Data!.User.SchoolId.Should().Be(w.School2.Id);
+        w.Context.Users.Single(u => u.Id == w.Teacher.Id).SchoolId.Should().Be(w.School2.Id);
+        // A turma da escola desativada some, mesmo com o vínculo ativo
+        new AccessScope(w.Context, new CurrentUserServiceMock(w.Teacher.Id, "Teacher", w.School2.Id))
+            .Classes().Select(c => c.Id).Should().BeEquivalentTo([w.ClassB.Id]);
+    }
+
+    [Fact]
+    public async Task OnlySchoolDeactivated_LoginIsRefused()
+    {
+        var w = new World();
+        w.School1.IsActive = false;
+        w.Context.SaveChanges();
+
+        var login = await new AuthService(new UnitOfWork(w.Context), JwtServiceMock.Create(), w.Context)
+            .LoginAsync(new LoginRequestDto(w.Teacher.Email, "Admin@123"));
+
+        login.StatusCode.Should().Be(401);
+        login.Error.Should().Contain("Escola desativada");
+    }
+
+    [Fact]
+    public async Task PrimarySchoolDeactivatedDuringSession_RefreshMovesToTheOtherSchool()
+    {
+        var w = new World();
+        var auth = new AuthService(new UnitOfWork(w.Context), JwtServiceMock.Create(), w.Context);
+        var login = await auth.LoginAsync(new LoginRequestDto(w.Teacher.Email, "Admin@123"));
+        await TeacherInBothSchoolsWithFirstDeactivated(w);
+        var validator = new SessionValidator(w.Context);
+        var sessionId = w.Context.UserSessions.Single(s => s.UserId == w.Teacher.Id).Id;
+
+        // O token antigo (escola 1) deixa de valer; a renovação troca para a escola 2
+        (await validator.IsValidAsync(w.Teacher.Id, sessionId, "Teacher", w.School1.Id)).Should().BeFalse();
+        var refreshed = await auth.RefreshAsync(login.Data!.RefreshToken);
+
+        refreshed.IsSuccess.Should().BeTrue();
+        refreshed.Data!.User.SchoolId.Should().Be(w.School2.Id);
+        (await validator.IsValidAsync(w.Teacher.Id, sessionId, "Teacher", w.School2.Id)).Should().BeTrue();
+    }
+
     // ---------- Vínculos com turma encerram, não apagam ----------
 
     [Fact]

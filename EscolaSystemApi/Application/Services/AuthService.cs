@@ -53,8 +53,8 @@ public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbCo
             await unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
-        // Usuário de escola desativada não acessa o sistema
-        if (user.School is { IsActive: false })
+        // Quem está em outras escolas ativas continua entrando por elas; fica de fora só quem não tem nenhuma
+        if (!await SchoolMembers.EnsureActivePrimaryAsync(context, user, cancellationToken))
             return Result<AuthSession>.Unauthorized("Escola desativada. Procure o administrador.");
 
         // Sessões vencidas do usuário não servem mais para nada
@@ -101,7 +101,9 @@ public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbCo
 
         var session = current.Session;
         var user = session.User;
-        if (!user.IsActive || user.School is { IsActive: false })
+        // A escola principal desativada com a sessão aberta: o token antigo é recusado pelo SessionValidator,
+        // e a renovação passa a principal para outra escola ativa
+        if (!user.IsActive || !await SchoolMembers.EnsureActivePrimaryAsync(context, user, cancellationToken))
         {
             session.RevokedAt = now;
             await unitOfWork.SaveChangesAsync(cancellationToken);
