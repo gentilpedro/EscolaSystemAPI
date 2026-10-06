@@ -60,6 +60,27 @@ Configurações opcionais:
 
 O tamanho do pool de conexões vai na própria connection string (`Maximum Pool Size`, padrão do Npgsql: 100).
 
+### Observabilidade (OpenTelemetry)
+
+Desligada por padrão. Com um coletor OTLP configurado, a API exporta:
+
+- **Traces**: cada requisição HTTP e os comandos no PostgreSQL feitos por ela (instrumentação do Npgsql; o SQL vai sem os valores dos parâmetros). Health checks, OpenAPI e Scalar ficam de fora.
+- **Métricas**: HTTP (duração, contagem por rota e status) e runtime .NET (GC, memória, threads).
+
+| Chave | Padrão | Descrição |
+|---|---|---|
+| `OpenTelemetry:OtlpEndpoint` | vazio | Endereço do coletor (ex.: `http://otel-collector:4317`). Vazio = desligado. `OTEL_EXPORTER_OTLP_ENDPOINT` também liga |
+| `OpenTelemetry:OtlpProtocol` | `grpc` | `grpc` (porta 4317) ou `http/protobuf` (porta 4318) |
+| `OpenTelemetry:ServiceName` | `EscolaSystemApi` | Nome do serviço nos traces e métricas |
+
+Os logs do console terminam com o `TraceId` da requisição, para achar o trace correspondente a um erro. Para ver os traces localmente com o Jaeger:
+
+```bash
+docker run -d --name jaeger -p 16686:16686 -p 4317:4317 jaegertracing/all-in-one:1.62.0
+OpenTelemetry__OtlpEndpoint=http://localhost:4317 dotnet run
+# traces em http://localhost:16686 (serviço EscolaSystemApi)
+```
+
 ### Health check
 
 Sem autenticação e fora do rate limit:
