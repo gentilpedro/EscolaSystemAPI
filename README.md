@@ -139,7 +139,7 @@ Authorization: Bearer <token>
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/?schoolId=&roleId=` | Admin, Director |
+| GET | `/?schoolId=&roleId=&search=&isActive=` | Admin, Director — `search` procura no nome e no e-mail, sem diferenciar maiúsculas |
 | GET | `/{id}` | Admin, Director |
 | POST | `/` | Admin, Director |
 | PUT | `/{id}` | Admin, Director |

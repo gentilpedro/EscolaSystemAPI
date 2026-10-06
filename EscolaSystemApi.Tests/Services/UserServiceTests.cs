@@ -45,6 +45,63 @@ public class UserServiceTests
         result.Data!.Items.Should().HaveCount(1);
     }
 
+    [Theory]
+    [InlineData("PROFESSOR")]   // nome, sem diferenciar maiúsculas
+    [InlineData("professor_")]   // trecho do e-mail
+    public async Task GetAllAsync_Search_FiltersByNameOrEmail(string search)
+    {
+        var context = DbContextHelper.CreateInMemoryContext();
+        var uow = new UnitOfWork(context);
+        var school = DbContextHelper.CreateSchool(context);
+        DbContextHelper.CreateDirectorUser(context, school.Id);
+        var teacher = DbContextHelper.CreateTeacherUser(context, school.Id);
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var service = new UserService(uow, context, currentUser, CpfEncryptionHelper.Create());
+
+        var result = await service.GetAllAsync(new PagedQuery(), search: search);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Data!.Items.Should().ContainSingle().Which.Id.Should().Be(teacher.Id);
+        result.Data.TotalCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_IsActive_FiltersInactiveUsers()
+    {
+        var context = DbContextHelper.CreateInMemoryContext();
+        var uow = new UnitOfWork(context);
+        var school = DbContextHelper.CreateSchool(context);
+        DbContextHelper.CreateDirectorUser(context, school.Id);
+        var teacher = DbContextHelper.CreateTeacherUser(context, school.Id);
+        teacher.IsActive = false;
+        context.SaveChanges();
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var service = new UserService(uow, context, currentUser, CpfEncryptionHelper.Create());
+
+        var active = await service.GetAllAsync(new PagedQuery(), isActive: true);
+        var inactive = await service.GetAllAsync(new PagedQuery(), isActive: false);
+
+        active.Data!.Items.Should().NotContain(u => u.Id == teacher.Id);
+        inactive.Data!.Items.Should().ContainSingle().Which.Id.Should().Be(teacher.Id);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_SearchAsDirector_StaysInOwnSchool()
+    {
+        var context = DbContextHelper.CreateInMemoryContext();
+        var uow = new UnitOfWork(context);
+        var school1 = DbContextHelper.CreateSchool(context);
+        var school2 = DbContextHelper.CreateSchool(context);
+        DbContextHelper.CreateDirectorUser(context, school1.Id);
+        DbContextHelper.CreateTeacherUser(context, school2.Id);
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school1.Id);
+        var service = new UserService(uow, context, currentUser, CpfEncryptionHelper.Create());
+
+        var result = await service.GetAllAsync(new PagedQuery(), search: "professor");
+
+        result.Data!.Items.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task CreateAsync_Admin_CreatesUser()
     {
