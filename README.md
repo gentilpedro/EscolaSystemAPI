@@ -147,6 +147,7 @@ Regras de criação e edição de usuários:
 - Desvincular de turma ou aluno também encerra o vínculo em vez de apagar; vincular de novo reabre o mesmo registro.
 - A edição de usuário não muda a escola de professor, orientador e responsável: isso é feito pelos vínculos.
 - Exclusão de usuário é lógica (desativa), preservando histórico.
+- A rede nunca fica sem administrador: desativar ou mudar o perfil do último admin ativo responde 409.
 
 ---
 
