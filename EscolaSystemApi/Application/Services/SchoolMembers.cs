@@ -39,6 +39,29 @@ public static class SchoolMembers
     }
 
     /// <summary>
+    /// Com a escola principal desativada, a principal passa para outra escola ativa em que a pessoa continua
+    /// (a de entrada mais antiga). Devolve false quando não sobra nenhuma escola ativa. Espera User.School carregada. Não salva.
+    /// </summary>
+    public static async Task<bool> EnsureActivePrimaryAsync(AppDbContext context, User user, CancellationToken cancellationToken)
+    {
+        if (user.School is null or { IsActive: true })
+            return true;
+
+        var next = await context.SchoolMemberships
+            .Where(m => m.UserId == user.Id && m.EndedAt == null && m.SchoolId != user.SchoolId && m.School.IsActive)
+            .OrderBy(m => m.CreatedAt)
+            .Select(m => m.School)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (next is null)
+            return false;
+
+        user.School = next;
+        user.SchoolId = next.Id;
+        return true;
+    }
+
+    /// <summary>
     /// Tira a pessoa da escola sem apagar nada: encerra o vínculo com a escola e os vínculos com as turmas
     /// e os alunos dela. Devolve as escolas em que a pessoa continua. Não salva.
     /// </summary>
