@@ -26,6 +26,9 @@ public class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Exception
         var (status, message) = exception switch
         {
             UnauthorizedAccessException => (HttpStatusCode.Unauthorized, "Não autenticado."),
+            // Alguém alterou ou excluiu o registro entre a leitura e a gravação
+            DbUpdateConcurrencyException => (HttpStatusCode.Conflict,
+                "O registro foi alterado ou excluído por outra pessoa. Recarregue e tente de novo."),
             // Violação de FK/índice único que escapou das validações do service
             DbUpdateException => (HttpStatusCode.Conflict,
                 "A operação conflita com registros existentes (duplicidade ou vínculos dependentes)."),

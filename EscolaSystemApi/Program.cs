@@ -4,6 +4,7 @@ using EscolaSystemApi.Extensions;
 using EscolaSystemApi.Infrastructure.Data;
 using EscolaSystemApi.Middleware;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using Serilog;
@@ -17,11 +18,17 @@ try
     var builder = WebApplication.CreateBuilder(args);
 
     builder.Host.UseSerilog((ctx, services, config) =>
+    {
         config.ReadFrom.Configuration(ctx.Configuration)
               .ReadFrom.Services(services)
               .Enrich.FromLogContext()
-              .WriteTo.Console()
-              .WriteTo.File("logs/app-.log", rollingInterval: RollingInterval.Day));
+              .WriteTo.Console();
+
+        // Em container o log vai só para o console; arquivo local apenas quando configurado
+        var logFile = ctx.Configuration["Logs:FilePath"];
+        if (!string.IsNullOrWhiteSpace(logFile))
+            config.WriteTo.File(logFile, rollingInterval: RollingInterval.Day);
+    });
 
     builder.Services.AddControllers(options =>
     {
@@ -40,6 +47,7 @@ try
     builder.Services.AddApplicationServices();
     builder.Services.AddJwtAuthentication(builder.Configuration);
     builder.Services.AddCorsPolicy(builder.Configuration, builder.Environment);
+    builder.Services.AddForwardedHeadersSupport(builder.Configuration);
     builder.Services.AddRateLimiting(builder.Configuration);
     builder.Services.AddOpenApiWithScalar();
 
@@ -50,7 +58,9 @@ try
     using (var scope = app.Services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        await db.Database.MigrateAsync();
+        // Com várias instâncias, desligue e aplique as migrations num passo de deploy separado
+        if (app.Configuration.GetValue("Database:MigrateOnStartup", true))
+            await db.Database.MigrateAsync();
         await DbSeeder.SeedAsync(db);
 
         var cpfService = scope.ServiceProvider.GetRequiredService<ICpfEncryptionService>();
@@ -72,6 +82,10 @@ try
         }
     }
 
+    // Antes de tudo que usa o IP do cliente (rate limit, logs)
+    if (app.Configuration.GetValue("ForwardedHeaders:Enabled", false))
+        app.UseForwardedHeaders();
+
     app.UseMiddleware<ExceptionHandlingMiddleware>();
     app.UseMiddleware<SecurityHeadersMiddleware>();
 
@@ -92,6 +106,10 @@ try
     app.UseAuthentication();
     app.UseAuthorization();
     app.MapControllers();
+
+    // Vivo: o processo responde. Pronto: o banco também está acessível.
+    app.MapHealthChecks("/health", new HealthCheckOptions { Predicate = _ => false }).DisableRateLimiting();
+    app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = c => c.Tags.Contains("ready") }).DisableRateLimiting();
 
     await app.RunAsync();
 }

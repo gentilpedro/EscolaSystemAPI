@@ -32,7 +32,7 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasForeignKey<User>(x => x.StudentId)
             .OnDelete(DeleteBehavior.SetNull);
 
-        // Senha padrão: Admin@123
+        // Hash da senha de fábrica do admin (documentada no README, só para desenvolvimento)
         const string passwordHash = "$2a$11$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi";
 
         builder.HasData(

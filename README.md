@@ -49,6 +49,19 @@ Configurações opcionais:
 | `Jwt:ExpirationInMinutes` | `60` | Validade do token |
 | `RateLimiting:AuthPermitLimit` | `30` | Tentativas de login/reset por IP a cada 15 min |
 | `Cors:AllowedOrigins` | `localhost:3000`, `localhost:5173` | Origens do front (fora de Development só `https://`) |
+| `Database:MigrateOnStartup` | `true` | Aplica as migrations ao subir. Com várias instâncias, desligue e rode as migrations num passo de deploy |
+| `Database:CommandTimeoutSeconds` | `30` | Tempo máximo de cada comando no banco. Falhas transitórias de conexão são repetidas até 3 vezes |
+| `Logs:FilePath` | `logs/app-.log` | Arquivo de log diário. Vazio = só console (recomendado em container) |
+| `ForwardedHeaders:Enabled` | `false` | Atrás de proxy reverso, usa o IP de `X-Forwarded-For` no rate limit. Informe o proxy em `ForwardedHeaders:KnownProxies` (IPs) ou `ForwardedHeaders:KnownNetworks` (CIDR, ex.: `10.0.0.0/8`) |
+
+O tamanho do pool de conexões vai na própria connection string (`Maximum Pool Size`, padrão do Npgsql: 100).
+
+### Health check
+
+Sem autenticação e fora do rate limit:
+
+- `GET /health`: o processo responde (liveness).
+- `GET /health/ready`: o banco também está acessível (readiness); `503` se não estiver.
 
 ---
 

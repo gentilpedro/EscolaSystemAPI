@@ -81,12 +81,6 @@ public class GradeService(IUnitOfWork unitOfWork, AppDbContext context, ICurrent
         if (student.ClassId != dto.ClassId)
             return Result<GradeDto>.BadRequest("Aluno não pertence a esta turma.");
 
-        var classExists = await unitOfWork.Repository<Class>()
-            .ExistsAsync(c => c.Id == dto.ClassId, cancellationToken);
-
-        if (!classExists)
-            return Result<GradeDto>.NotFound("Turma não encontrada.");
-
         if (currentUser.Role == "Teacher")
         {
             var isTeacherOfClass = await context.TeacherClasses
