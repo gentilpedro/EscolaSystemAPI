@@ -21,7 +21,7 @@ public class UserService(
         var filtered = ScopedUsers();
 
         if (schoolId.HasValue)
-            filtered = filtered.Where(u => u.SchoolId == schoolId.Value);
+            filtered = filtered.Where(SchoolMembers.BelongsTo(schoolId.Value));
         if (roleId.HasValue)
             filtered = filtered.Where(u => u.RoleId == roleId.Value);
         if (isActive.HasValue)
@@ -108,6 +108,8 @@ public class UserService(
         };
 
         await unitOfWork.Repository<User>().AddAsync(user, cancellationToken);
+        if (user.SchoolId is { } newSchoolId)
+            context.SchoolMemberships.Add(new SchoolMembership { UserId = user.Id, SchoolId = newSchoolId });
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         return await GetByIdAsync(user.Id, cancellationToken) is { IsSuccess: true } r
@@ -124,10 +126,12 @@ public class UserService(
             return Result<UserListDto>.NotFound("Usuário não encontrado.");
 
         var isSelf = user.Id == currentUser.UserId;
+        // Professor, orientador e responsável continuam nesses perfis: a escola deles muda pelos vínculos, não pela edição
+        var multiSchool = RoleIds.MultiSchool.Contains(user.RoleId) && RoleIds.MultiSchool.Contains(dto.RoleId);
 
         if (IsDirector)
         {
-            if (user.SchoolId != currentUser.SchoolId)
+            if (!await SchoolMembers.BelongsToAsync(context, user.Id, currentUser.SchoolId, cancellationToken))
                 return Result<UserListDto>.Forbidden("Você não tem permissão para editar este usuário.");
 
             if (!isSelf && !RoleIds.SchoolMembers.Contains(user.RoleId))
@@ -137,8 +141,14 @@ public class UserService(
             if (!allowedRoles.Contains(dto.RoleId))
                 return Result<UserListDto>.Forbidden("Você não pode atribuir este perfil.");
 
-            if (dto.SchoolId != currentUser.SchoolId)
+            // Professor que também está em outra escola chega com a escola principal dele: só não pode mudar
+            if (multiSchool ? dto.SchoolId != user.SchoolId : dto.SchoolId != currentUser.SchoolId)
                 return Result<UserListDto>.Forbidden("Você não pode mover usuários para outra escola.");
+        }
+        else if (multiSchool && dto.SchoolId != user.SchoolId)
+        {
+            return Result<UserListDto>.BadRequest(
+                "A escola de professores, orientadores e responsáveis não muda pela edição: a direção da outra escola adiciona a pessoa, e a desta escola a remove.");
         }
         else if (dto.RoleId != user.RoleId && !RoleIds.Platform.Contains(dto.RoleId))
         {
@@ -151,9 +161,19 @@ public class UserService(
         if (isSelf && !dto.IsActive)
             return Result<UserListDto>.BadRequest("Você não pode desativar sua própria conta.");
 
-        var schoolCheck = await ValidateSchoolForRoleAsync(dto.RoleId, dto.SchoolId, cancellationToken);
+        var targetSchoolId = multiSchool ? user.SchoolId : dto.SchoolId;
+        var schoolCheck = await ValidateSchoolForRoleAsync(dto.RoleId, targetSchoolId, cancellationToken);
         if (schoolCheck is not null)
             return schoolCheck;
+
+        // Diretor e aluno têm uma escola só: quem está em outras escolas precisa sair delas antes
+        if (dto.RoleId is RoleIds.Director or RoleIds.Student)
+        {
+            var otherSchools = (await SchoolMembers.ActiveSchoolIdsAsync(context, user.Id, cancellationToken))
+                .Where(sid => sid != targetSchoolId).ToList();
+            if (otherSchools.Count > 0)
+                return Result<UserListDto>.Conflict("Esta pessoa está vinculada a outras escolas. Remova-a delas antes de mudar o perfil.");
+        }
 
         if (!await context.Roles.AnyAsync(r => r.Id == dto.RoleId, cancellationToken))
             return Result<UserListDto>.NotFound("Role não encontrada.");
@@ -164,7 +184,7 @@ public class UserService(
         var studentId = dto.RoleId == RoleIds.Student ? dto.StudentId ?? user.StudentId : null;
         if (dto.RoleId == RoleIds.Student)
         {
-            var studentCheck = await ValidateStudentLinkAsync(studentId, dto.SchoolId, user.Id, cancellationToken);
+            var studentCheck = await ValidateStudentLinkAsync(studentId, targetSchoolId, user.Id, cancellationToken);
             if (studentCheck is not null)
                 return studentCheck;
         }
@@ -191,11 +211,18 @@ public class UserService(
         user.Name = dto.Name;
         user.Email = dto.Email;
         user.RoleId = dto.RoleId;
-        user.SchoolId = dto.RoleId == RoleIds.Admin ? null : dto.SchoolId;
+        var previousSchoolId = user.SchoolId;
+        user.SchoolId = dto.RoleId == RoleIds.Admin ? null : targetSchoolId;
         user.StudentId = studentId;
         user.IsActive = dto.IsActive;
         user.Phone = dto.Phone;
         user.UpdatedAt = DateTime.UtcNow;
+
+        // A escola principal sempre tem vínculo ativo; a que deixou de ser (diretor ou aluno mudando de escola, admin) é encerrada
+        if (dto.IsActive && user.SchoolId is { } currentSchoolId)
+            await SchoolMembers.EnsureActiveAsync(context, user.Id, currentSchoolId, cancellationToken);
+        if (previousSchoolId is { } oldSchoolId && oldSchoolId != user.SchoolId)
+            await SchoolMembers.EndAsync(context, user, oldSchoolId, cancellationToken);
 
         unitOfWork.Repository<User>().Update(user);
         if (!dto.IsActive)
@@ -212,11 +239,16 @@ public class UserService(
         if (user is null)
             return Result<bool>.NotFound("Usuário não encontrado.");
 
-        if (IsDirector && (user.SchoolId != currentUser.SchoolId || !RoleIds.SchoolMembers.Contains(user.RoleId)))
+        if (IsDirector && (!RoleIds.SchoolMembers.Contains(user.RoleId)
+                           || !await SchoolMembers.BelongsToAsync(context, user.Id, currentUser.SchoolId, cancellationToken)))
             return Result<bool>.Forbidden("Você não tem permissão para remover este usuário.");
 
         if (user.Id == currentUser.UserId)
             return Result<bool>.BadRequest("Você não pode remover sua própria conta.");
+
+        // A direção só responde pela própria escola: professor, orientador e responsável saem dela e continuam nas outras
+        if (IsDirector && RoleIds.MultiSchool.Contains(user.RoleId))
+            return await RemoveFromSchoolAsync(user, currentUser.SchoolId!.Value, cancellationToken);
 
         // Remoção lógica: preserva o histórico de notas, chamadas e ocorrências
         user.IsActive = false;
@@ -231,7 +263,8 @@ public class UserService(
 
     public Task<Result<bool>> AssignClassAsync(Guid teacherId, Guid classId, CancellationToken cancellationToken = default)
         => AssignToClassAsync(teacherId, classId, "Teacher", "professor",
-            () => context.TeacherClasses.AnyAsync(tc => tc.TeacherId == teacherId && tc.ClassId == classId, cancellationToken),
+            async () => await context.TeacherClasses.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(tc => tc.TeacherId == teacherId && tc.ClassId == classId, cancellationToken),
             () => context.TeacherClasses.Add(new TeacherClass { TeacherId = teacherId, ClassId = classId }),
             cancellationToken);
 
@@ -246,7 +279,7 @@ public class UserService(
         if (IsDirector && link.Class.SchoolId != currentUser.SchoolId)
             return Result<bool>.Forbidden("Você não tem permissão para alterar este vínculo.");
 
-        context.TeacherClasses.Remove(link);
+        link.EndedAt = DateTime.UtcNow;
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<bool>.NoContent();
     }
@@ -262,7 +295,7 @@ public class UserService(
         if (parent.Role.Name != "Parent")
             return Result<bool>.BadRequest("Usuário não é um responsável.");
 
-        if (IsDirector && parent.SchoolId != currentUser.SchoolId)
+        if (IsDirector && !await SchoolMembers.BelongsToAsync(context, parent.Id, currentUser.SchoolId, cancellationToken))
             return Result<bool>.Forbidden("Você não tem permissão para vincular este responsável.");
 
         var student = await context.Students.Include(s => s.Class)
@@ -271,16 +304,22 @@ public class UserService(
         if (student is null)
             return Result<bool>.NotFound("Aluno não encontrado.");
 
-        if (student.Class.SchoolId != parent.SchoolId)
-            return Result<bool>.BadRequest("Responsável e aluno precisam ser da mesma escola.");
+        if (IsDirector && student.Class.SchoolId != currentUser.SchoolId)
+            return Result<bool>.Forbidden("Este aluno não pertence à sua escola.");
 
-        var alreadyAssigned = await context.ParentStudents
-            .AnyAsync(ps => ps.ParentId == parentId && ps.StudentId == studentId, cancellationToken);
+        if (!await SchoolMembers.BelongsToAsync(context, parent.Id, student.Class.SchoolId, cancellationToken))
+            return Result<bool>.BadRequest("O responsável não está vinculado à escola do aluno. Adicione-o à escola primeiro.");
 
-        if (alreadyAssigned)
+        var existing = await context.ParentStudents.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(ps => ps.ParentId == parentId && ps.StudentId == studentId, cancellationToken);
+
+        if (existing is { EndedAt: null })
             return Result<bool>.Conflict("Responsável já está vinculado a este aluno.");
 
-        context.ParentStudents.Add(new ParentStudent { ParentId = parentId, StudentId = studentId });
+        if (existing is not null)
+            existing.EndedAt = null;
+        else
+            context.ParentStudents.Add(new ParentStudent { ParentId = parentId, StudentId = studentId });
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<bool>.NoContent();
     }
@@ -297,14 +336,15 @@ public class UserService(
         if (IsDirector && link.Student.Class.SchoolId != currentUser.SchoolId)
             return Result<bool>.Forbidden("Você não tem permissão para alterar este vínculo.");
 
-        context.ParentStudents.Remove(link);
+        link.EndedAt = DateTime.UtcNow;
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<bool>.NoContent();
     }
 
     public Task<Result<bool>> AssignOrientadorClassAsync(Guid orientadorId, Guid classId, CancellationToken cancellationToken = default)
         => AssignToClassAsync(orientadorId, classId, "Orientador", "orientador",
-            () => context.OrientadorClasses.AnyAsync(oc => oc.OrientadorId == orientadorId && oc.ClassId == classId, cancellationToken),
+            async () => await context.OrientadorClasses.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(oc => oc.OrientadorId == orientadorId && oc.ClassId == classId, cancellationToken),
             () => context.OrientadorClasses.Add(new OrientadorClass { OrientadorId = orientadorId, ClassId = classId }),
             cancellationToken);
 
@@ -319,14 +359,14 @@ public class UserService(
         if (IsDirector && link.Class.SchoolId != currentUser.SchoolId)
             return Result<bool>.Forbidden("Você não tem permissão para alterar este vínculo.");
 
-        context.OrientadorClasses.Remove(link);
+        link.EndedAt = DateTime.UtcNow;
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<bool>.NoContent();
     }
 
     private async Task<Result<bool>> AssignToClassAsync(
         Guid userId, Guid classId, string roleName, string roleLabel,
-        Func<Task<bool>> alreadyAssigned, Action addLink, CancellationToken cancellationToken)
+        Func<Task<IEndableLink?>> findLink, Action addLink, CancellationToken cancellationToken)
     {
         var user = await context.Users.Include(u => u.Role)
             .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
@@ -337,7 +377,7 @@ public class UserService(
         if (user.Role.Name != roleName)
             return Result<bool>.BadRequest($"Usuário não é um {roleLabel}.");
 
-        if (IsDirector && user.SchoolId != currentUser.SchoolId)
+        if (IsDirector && !await SchoolMembers.BelongsToAsync(context, user.Id, currentUser.SchoolId, cancellationToken))
             return Result<bool>.Forbidden($"Você não tem permissão para vincular este {roleLabel}.");
 
         var cls = await context.Classes.FirstOrDefaultAsync(c => c.Id == classId, cancellationToken);
@@ -345,13 +385,21 @@ public class UserService(
         if (cls is null)
             return Result<bool>.NotFound("Turma não encontrada.");
 
-        if (cls.SchoolId != user.SchoolId)
-            return Result<bool>.BadRequest($"A turma não pertence à escola do {roleLabel}.");
+        if (IsDirector && cls.SchoolId != currentUser.SchoolId)
+            return Result<bool>.Forbidden("Você só vincula turmas da sua escola.");
 
-        if (await alreadyAssigned())
+        if (!await SchoolMembers.BelongsToAsync(context, user.Id, cls.SchoolId, cancellationToken))
+            return Result<bool>.BadRequest($"O {roleLabel} não está vinculado à escola desta turma.");
+
+        var existing = await findLink();
+        if (existing is { EndedAt: null })
             return Result<bool>.Conflict($"O {roleLabel} já está vinculado a esta turma.");
 
-        addLink();
+        // Vínculo encerrado antes volta a valer; senão, cria
+        if (existing is not null)
+            existing.EndedAt = null;
+        else
+            addLink();
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<bool>.NoContent();
     }
@@ -396,12 +444,13 @@ public class UserService(
             .Include(u => u.TeacherClasses)
             .Include(u => u.OrientadorClasses)
             .Include(u => u.ParentStudents)
+            .Include(u => u.SchoolMemberships.Where(m => m.EndedAt == null)).ThenInclude(m => m.School)
             .AsSplitQuery();
 
         return currentUser.Role switch
         {
             "Admin" => query,
-            "Director" => query.Where(u => u.SchoolId == currentUser.SchoolId),
+            "Director" => query.Where(SchoolMembers.BelongsTo(currentUser.SchoolId)),
             _ => query.Where(_ => false)
         };
     }
@@ -416,6 +465,76 @@ public class UserService(
 
         return new(u.Id, u.Name, u.Email, u.Role?.Name ?? string.Empty,
             u.SchoolId, u.School?.Name, u.IsActive, u.CreatedAt, cpf, u.Phone,
-            u.StudentId, classIds, u.ParentStudents.Select(ps => ps.StudentId).ToList());
+            u.StudentId, classIds, u.ParentStudents.Select(ps => ps.StudentId).ToList(),
+            u.SchoolMemberships.Where(m => m.EndedAt == null)
+                .Select(m => new SchoolRefDto(m.SchoolId, m.School?.Name ?? string.Empty))
+                .DistinctBy(sr => sr.Id)
+                .OrderBy(sr => sr.Name)
+                .ToList());
+    }
+
+    // ---------- Vínculos com a escola ----------
+
+    public async Task<Result<UserListDto>> AddMemberAsync(Guid schoolId, string email, CancellationToken cancellationToken = default)
+    {
+        if (IsDirector && schoolId != currentUser.SchoolId)
+            return Result<UserListDto>.Forbidden("Você só adiciona pessoas à sua escola.");
+
+        if (!await context.Schools.AnyAsync(s => s.Id == schoolId && s.IsActive, cancellationToken))
+            return Result<UserListDto>.NotFound("Escola não encontrada ou desativada.");
+
+        var normalized = email.Trim();
+        var user = await context.Users.FirstOrDefaultAsync(u => u.Email == normalized, cancellationToken);
+        if (user is null)
+            return Result<UserListDto>.NotFound("Nenhuma conta com este e-mail. Cadastre a pessoa como novo usuário.");
+
+        if (!RoleIds.MultiSchool.Contains(user.RoleId))
+            return Result<UserListDto>.BadRequest("Só professores, orientadores e responsáveis podem estar em mais de uma escola.");
+
+        // Conta desativada (por saída de todas as escolas ou pela administração) só volta pelo administrador
+        if (!user.IsActive)
+            return Result<UserListDto>.Conflict("Esta conta está desativada. Peça ao administrador para reativá-la.");
+
+        if (await SchoolMembers.BelongsToAsync(context, user.Id, schoolId, cancellationToken))
+            return Result<UserListDto>.Conflict("Esta pessoa já está vinculada à escola.");
+
+        await SchoolMembers.EnsureActiveAsync(context, user.Id, schoolId, cancellationToken);
+        user.SchoolId ??= schoolId;
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return await GetByIdAsync(user.Id, cancellationToken);
+    }
+
+    public async Task<Result<bool>> RemoveMemberAsync(Guid schoolId, Guid userId, CancellationToken cancellationToken = default)
+    {
+        if (IsDirector && schoolId != currentUser.SchoolId)
+            return Result<bool>.Forbidden("Você só remove pessoas da sua escola.");
+
+        var user = await context.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (user is null || !await SchoolMembers.BelongsToAsync(context, userId, schoolId, cancellationToken))
+            return Result<bool>.NotFound("Esta pessoa não está vinculada à escola.");
+
+        if (!RoleIds.MultiSchool.Contains(user.RoleId))
+            return Result<bool>.BadRequest("Diretores e alunos não saem da escola: desative a conta.");
+
+        if (user.Id == currentUser.UserId)
+            return Result<bool>.BadRequest("Você não pode remover a si mesmo da escola.");
+
+        return await RemoveFromSchoolAsync(user, schoolId, cancellationToken);
+    }
+
+    // Sai da escola sem apagar nada; sem nenhuma escola ativa, a conta é desativada
+    private async Task<Result<bool>> RemoveFromSchoolAsync(User user, Guid schoolId, CancellationToken cancellationToken)
+    {
+        var remaining = await SchoolMembers.EndAsync(context, user, schoolId, cancellationToken);
+        if (remaining.Count == 0)
+        {
+            user.IsActive = false;
+            await UserSessions.RevokeAllAsync(context, user.Id, cancellationToken: cancellationToken);
+        }
+
+        user.UpdatedAt = DateTime.UtcNow;
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return Result<bool>.NoContent();
     }
 }

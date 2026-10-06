@@ -16,4 +16,8 @@ public interface IUserService
     Task<Result<bool>> UnassignStudentAsync(Guid parentId, Guid studentId, CancellationToken cancellationToken = default);
     Task<Result<bool>> AssignOrientadorClassAsync(Guid orientadorId, Guid classId, CancellationToken cancellationToken = default);
     Task<Result<bool>> UnassignOrientadorClassAsync(Guid orientadorId, Guid classId, CancellationToken cancellationToken = default);
+    // Pessoa já cadastrada entra em outra escola (professor, orientador ou responsável)
+    Task<Result<UserListDto>> AddMemberAsync(Guid schoolId, string email, CancellationToken cancellationToken = default);
+    // Sai da escola sem apagar: encerra os vínculos com ela, as turmas e os alunos dela
+    Task<Result<bool>> RemoveMemberAsync(Guid schoolId, Guid userId, CancellationToken cancellationToken = default);
 }

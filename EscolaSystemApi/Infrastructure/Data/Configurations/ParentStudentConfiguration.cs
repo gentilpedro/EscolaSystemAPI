@@ -9,6 +9,8 @@ public class ParentStudentConfiguration : IEntityTypeConfiguration<ParentStudent
     public void Configure(EntityTypeBuilder<ParentStudent> builder)
     {
         builder.HasKey(x => new { x.ParentId, x.StudentId });
+        // Vínculo encerrado continua no banco (histórico), mas some de todas as consultas
+        builder.HasQueryFilter(x => x.EndedAt == null);
 
         builder.HasOne(x => x.Parent)
             .WithMany(x => x.ParentStudents)

@@ -110,7 +110,8 @@ public class SchoolService(IUnitOfWork unitOfWork, ICurrentUserService currentUs
             return Result<bool>.NotFound("Escola não encontrada.");
 
         var hasDependents = await context.Classes.AnyAsync(c => c.SchoolId == id, cancellationToken)
-                            || await context.Users.AnyAsync(u => u.SchoolId == id, cancellationToken);
+                            || await context.Users.AnyAsync(u => u.SchoolId == id, cancellationToken)
+                            || await context.SchoolMemberships.AnyAsync(m => m.SchoolId == id, cancellationToken);
 
         if (hasDependents)
             return Result<bool>.Conflict("A escola possui turmas ou usuários vinculados. Desative-a em vez de excluir.");
