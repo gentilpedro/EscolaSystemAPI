@@ -238,8 +238,13 @@ Status: `1` Pendente, `2` Aprovado, `3` Rejeitado. A resposta inclui o autor (`c
 |---|---|---|
 | GET | `/?classId=&studentId=` | Autenticado |
 | GET | `/{id}` | Autenticado |
-| POST | `/` | Admin, Teacher, Director |
+| POST | `/` | Admin, Teacher, Director — um aluno; cada chamada é um trabalho próprio |
+| POST | `/class` | Admin, Teacher (da turma), Director (da escola) — lança para todos os alunos ativos da turma de uma vez |
+| PUT | `/assignments/{assignmentId}` | Admin, Teacher (da turma), Director (da escola) — corrige título, descrição e prazo em todos os alunos; entregas continuam |
+| DELETE | `/assignments/{assignmentId}` | Admin, Teacher (da turma), Director (da escola) — exclui o trabalho de todos os alunos |
 | PUT | `/{id}/delivered` | Admin, Teacher, Director, Student (aluno só entrega o próprio trabalho) |
+
+A API guarda um registro por aluno; o `assignmentId` liga os registros do mesmo trabalho da turma.
 
 ### Dashboard e relatórios
 

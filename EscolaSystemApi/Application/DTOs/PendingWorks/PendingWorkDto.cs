@@ -11,4 +11,5 @@ public sealed record PendingWorkDto(
     DateOnly DueDate,
     bool IsDelivered,
     DateTime? DeliveredAt,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    Guid AssignmentId);

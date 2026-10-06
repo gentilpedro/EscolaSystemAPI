@@ -11,6 +11,7 @@ public class PendingWorkConfiguration : IEntityTypeConfiguration<PendingWork>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Title).IsRequired().HasMaxLength(300);
         builder.Property(x => x.Description).IsRequired().HasMaxLength(2000);
+        builder.HasIndex(x => x.AssignmentId);
 
         builder.HasOne(x => x.Student)
             .WithMany(x => x.PendingWorks)
