@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Net;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
@@ -6,9 +7,11 @@ using EscolaSystemApi.Application.Interfaces;
 using EscolaSystemApi.Application.Interfaces.Repositories;
 using EscolaSystemApi.Application.Services;
 using EscolaSystemApi.Infrastructure.Data;
+using EscolaSystemApi.Infrastructure.HealthChecks;
 using EscolaSystemApi.Infrastructure.Repositories;
 using EscolaSystemApi.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -20,10 +23,40 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        var commandTimeout = configuration.GetValue("Database:CommandTimeoutSeconds", 30);
+
         services.AddDbContext<AppDbContext>(options =>
-            options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
+            options.UseNpgsql(configuration.GetConnectionString("DefaultConnection"), npgsql => npgsql
+                // Quedas curtas do banco (failover, restart) são repetidas em vez de virar 500
+                .EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null)
+                .CommandTimeout(commandTimeout)));
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
+
+        services.AddHealthChecks()
+            .AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
+
+        return services;
+    }
+
+    // Atrás de proxy reverso, o IP do cliente vem em X-Forwarded-For; só se confia em proxies configurados
+    public static IServiceCollection AddForwardedHeadersSupport(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+            foreach (var proxy in configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>() ?? [])
+                if (IPAddress.TryParse(proxy, out var ip))
+                    options.KnownProxies.Add(ip);
+
+            foreach (var network in configuration.GetSection("ForwardedHeaders:KnownNetworks").Get<string[]>() ?? [])
+            {
+                var parts = network.Split('/');
+                if (parts.Length == 2 && IPAddress.TryParse(parts[0], out var prefix) && int.TryParse(parts[1], out var length))
+                    options.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(prefix, length));
+            }
+        });
 
         return services;
     }
@@ -35,7 +68,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<ISessionValidator, SessionValidator>();
         services.AddScoped<IUserService, UserService>();
-        services.AddScoped<IJwtService, JwtService>();
+        // Só lê configuração na construção: uma instância basta
+        services.AddSingleton<IJwtService, JwtService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ISchoolService, SchoolService>();
         services.AddScoped<IClassService, ClassService>();
