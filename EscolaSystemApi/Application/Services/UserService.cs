@@ -161,6 +161,11 @@ public class UserService(
         if (isSelf && !dto.IsActive)
             return Result<UserListDto>.BadRequest("Você não pode desativar sua própria conta.");
 
+        // Sem administrador ativo, ninguém mais cadastra escolas nem diretores
+        var leavesAdmins = user.RoleId == RoleIds.Admin && user.IsActive && (!dto.IsActive || dto.RoleId != RoleIds.Admin);
+        if (leavesAdmins && await IsLastActiveAdminAsync(user.Id, cancellationToken))
+            return Result<UserListDto>.Conflict(LastAdminMessage);
+
         var targetSchoolId = multiSchool ? user.SchoolId : dto.SchoolId;
         var schoolCheck = await ValidateSchoolForRoleAsync(dto.RoleId, targetSchoolId, cancellationToken);
         if (schoolCheck is not null)
@@ -245,6 +250,9 @@ public class UserService(
 
         if (user.Id == currentUser.UserId)
             return Result<bool>.BadRequest("Você não pode remover sua própria conta.");
+
+        if (user.RoleId == RoleIds.Admin && user.IsActive && await IsLastActiveAdminAsync(user.Id, cancellationToken))
+            return Result<bool>.Conflict(LastAdminMessage);
 
         // A direção só responde pela própria escola: professor, orientador e responsável saem dela e continuam nas outras
         if (IsDirector && RoleIds.MultiSchool.Contains(user.RoleId))
@@ -403,6 +411,11 @@ public class UserService(
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<bool>.NoContent();
     }
+
+    private const string LastAdminMessage = "É preciso manter pelo menos um administrador ativo. Cadastre ou ative outro administrador antes.";
+
+    private async Task<bool> IsLastActiveAdminAsync(Guid adminId, CancellationToken cancellationToken) =>
+        !await context.Users.AnyAsync(u => u.RoleId == RoleIds.Admin && u.IsActive && u.Id != adminId, cancellationToken);
 
     private async Task<Result<UserListDto>?> ValidateSchoolForRoleAsync(int roleId, Guid? schoolId, CancellationToken cancellationToken)
     {
