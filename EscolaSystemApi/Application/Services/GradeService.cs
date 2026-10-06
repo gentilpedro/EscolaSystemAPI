@@ -10,25 +10,14 @@ namespace EscolaSystemApi.Application.Services;
 
 public class GradeService(IUnitOfWork unitOfWork, AppDbContext context, ICurrentUserService currentUser) : IGradeService
 {
+    // Regras de visibilidade por perfil (quem enxerga o quê) ficam no AccessScope
+    private readonly AccessScope scope = new(context, currentUser);
+
     public async Task<Result<PagedResult<GradeDto>>> GetAllAsync(PagedQuery query, Guid? classId = null, Guid? studentId = null, CancellationToken cancellationToken = default)
     {
-        var baseQuery = context.Grades.AsNoTracking()
+        IQueryable<Grade> filtered = scope.Grades().AsNoTracking()
             .Include(g => g.Student)
             .Include(g => g.Class).ThenInclude(c => c.School);
-
-        var filtered = currentUser.Role switch
-        {
-            "Admin" => baseQuery,
-            "Director" => baseQuery.Where(g => g.Class.SchoolId == currentUser.SchoolId),
-            "Teacher" => baseQuery.Where(g => context.TeacherClasses
-                .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == g.ClassId)),
-            "Orientador" => baseQuery.Where(g => context.OrientadorClasses
-                .Any(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == g.ClassId)),
-            "Student" => baseQuery.Where(g => g.StudentId == currentUser.StudentId),
-            "Parent" => baseQuery.Where(g => context.ParentStudents
-                .Any(ps => ps.ParentId == currentUser.UserId && ps.StudentId == g.StudentId)),
-            _ => baseQuery.Where(_ => false)
-        };
 
         if (classId.HasValue)
             filtered = filtered.Where(g => g.ClassId == classId.Value);
@@ -45,23 +34,9 @@ public class GradeService(IUnitOfWork unitOfWork, AppDbContext context, ICurrent
 
     public async Task<Result<GradeDto>> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var query = context.Grades.AsNoTracking()
+        IQueryable<Grade> filtered = scope.Grades().AsNoTracking()
             .Include(g => g.Student)
             .Include(g => g.Class).ThenInclude(c => c.School);
-
-        var filtered = currentUser.Role switch
-        {
-            "Admin" => query,
-            "Director" => query.Where(g => g.Class.SchoolId == currentUser.SchoolId),
-            "Teacher" => query.Where(g => context.TeacherClasses
-                .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == g.ClassId)),
-            "Orientador" => query.Where(g => context.OrientadorClasses
-                .Any(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == g.ClassId)),
-            "Student" => query.Where(g => g.StudentId == currentUser.StudentId),
-            "Parent" => query.Where(g => context.ParentStudents
-                .Any(ps => ps.ParentId == currentUser.UserId && ps.StudentId == g.StudentId)),
-            _ => query.Where(_ => false)
-        };
 
         var grade = await filtered.FirstOrDefaultAsync(g => g.Id == id, cancellationToken);
         return grade is null

@@ -10,6 +10,9 @@ namespace EscolaSystemApi.Application.Services;
 
 public class DashboardService(AppDbContext context, ICurrentUserService currentUser) : IDashboardService
 {
+    // Regras de visibilidade por perfil (quem enxerga o quê) ficam no AccessScope
+    private readonly AccessScope scope = new(context, currentUser);
+
     public async Task<Result<AdminStatsDto>> GetAdminStatsAsync(CancellationToken cancellationToken = default)
     {
         var stats = new AdminStatsDto(
@@ -110,34 +113,9 @@ public class DashboardService(AppDbContext context, ICurrentUserService currentU
         return Result<List<ClassReportDto>>.Success(reports);
     }
 
-    private IQueryable<Class> VisibleClasses() => currentUser.Role switch
-    {
-        "Admin" => context.Classes,
-        "Director" => context.Classes.Where(c => c.SchoolId == currentUser.SchoolId),
-        "Teacher" => context.Classes.Where(c => context.TeacherClasses
-            .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == c.Id)),
-        "Orientador" => context.Classes.Where(c => context.OrientadorClasses
-            .Any(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == c.Id)),
-        "Student" => context.Classes.Where(c => context.Students
-            .Any(s => s.Id == currentUser.StudentId && s.ClassId == c.Id)),
-        "Parent" => context.Classes.Where(c => context.ParentStudents
-            .Any(ps => ps.ParentId == currentUser.UserId && ps.Student.ClassId == c.Id)),
-        _ => context.Classes.Where(_ => false)
-    };
+    private IQueryable<Class> VisibleClasses() => scope.Classes();
 
-    private IQueryable<Student> VisibleStudents() => currentUser.Role switch
-    {
-        "Admin" => context.Students,
-        "Director" => context.Students.Where(s => s.Class.SchoolId == currentUser.SchoolId),
-        "Teacher" => context.Students.Where(s => context.TeacherClasses
-            .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == s.ClassId)),
-        "Orientador" => context.Students.Where(s => context.OrientadorClasses
-            .Any(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == s.ClassId)),
-        "Student" => context.Students.Where(s => s.Id == currentUser.StudentId),
-        "Parent" => context.Students.Where(s => context.ParentStudents
-            .Any(ps => ps.ParentId == currentUser.UserId && ps.StudentId == s.Id)),
-        _ => context.Students.Where(_ => false)
-    };
+    private IQueryable<Student> VisibleStudents() => scope.Students();
 
     // Funcionários: diretores, professores e orientadores ativos
     private IQueryable<User> VisibleStaff()

@@ -11,6 +11,9 @@ namespace EscolaSystemApi.Application.Services;
 
 public class DisciplinaryCallService(IUnitOfWork unitOfWork, AppDbContext context, ICurrentUserService currentUser) : IDisciplinaryCallService
 {
+    // Regras de visibilidade por perfil (quem enxerga o quê) ficam no AccessScope
+    private readonly AccessScope scope = new(context, currentUser);
+
     public async Task<Result<PagedResult<DisciplinaryCallDto>>> GetAllAsync(PagedQuery query, DisciplinaryCallFilter? filter = null, CancellationToken cancellationToken = default)
     {
         var filtered = ScopedCalls();
@@ -157,27 +160,10 @@ public class DisciplinaryCallService(IUnitOfWork unitOfWork, AppDbContext contex
         }
     }
 
-    private IQueryable<DisciplinaryCall> ScopedCalls()
-    {
-        var query = context.DisciplinaryCalls.AsNoTracking()
-            .Include(d => d.Student).ThenInclude(s => s.Class)
-            .Include(d => d.ResolvedBy)
-            .Include(d => d.CreatedBy);
-
-        return currentUser.Role switch
-        {
-            "Admin" => query,
-            "Director" => query.Where(d => d.Student.Class.SchoolId == currentUser.SchoolId),
-            "Teacher" => query.Where(d => context.TeacherClasses
-                .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == d.Student.ClassId)),
-            "Orientador" => query.Where(d => context.OrientadorClasses
-                .Any(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == d.Student.ClassId)),
-            "Student" => query.Where(d => d.StudentId == currentUser.StudentId),
-            "Parent" => query.Where(d => context.ParentStudents
-                .Any(ps => ps.ParentId == currentUser.UserId && ps.StudentId == d.StudentId)),
-            _ => query.Where(_ => false)
-        };
-    }
+    private IQueryable<DisciplinaryCall> ScopedCalls() => scope.DisciplinaryCalls().AsNoTracking()
+        .Include(d => d.Student).ThenInclude(s => s.Class)
+        .Include(d => d.ResolvedBy)
+        .Include(d => d.CreatedBy);
 
     private static DisciplinaryCallDto ToDto(DisciplinaryCall d) =>
         new(d.Id, d.StudentId, d.Student?.Name ?? string.Empty, d.Description, d.Status,

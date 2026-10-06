@@ -10,25 +10,14 @@ namespace EscolaSystemApi.Application.Services;
 
 public class AttendanceService(IUnitOfWork unitOfWork, AppDbContext context, ICurrentUserService currentUser) : IAttendanceService
 {
+    // Regras de visibilidade por perfil (quem enxerga o quê) ficam no AccessScope
+    private readonly AccessScope scope = new(context, currentUser);
+
     public async Task<Result<PagedResult<AttendanceDto>>> GetAllAsync(PagedQuery query, Guid? classId = null, Guid? studentId = null, DateOnly? date = null, CancellationToken cancellationToken = default)
     {
-        var baseQuery = context.Attendances.AsNoTracking()
+        IQueryable<Attendance> filtered = scope.Attendances().AsNoTracking()
             .Include(a => a.Student)
             .Include(a => a.Class).ThenInclude(c => c.School);
-
-        var filtered = currentUser.Role switch
-        {
-            "Admin" => baseQuery,
-            "Director" => baseQuery.Where(a => a.Class.SchoolId == currentUser.SchoolId),
-            "Teacher" => baseQuery.Where(a => context.TeacherClasses
-                .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == a.ClassId)),
-            "Orientador" => baseQuery.Where(a => context.OrientadorClasses
-                .Any(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == a.ClassId)),
-            "Student" => baseQuery.Where(a => a.StudentId == currentUser.StudentId),
-            "Parent" => baseQuery.Where(a => context.ParentStudents
-                .Any(ps => ps.ParentId == currentUser.UserId && ps.StudentId == a.StudentId)),
-            _ => baseQuery.Where(_ => false)
-        };
 
         if (classId.HasValue)
             filtered = filtered.Where(a => a.ClassId == classId.Value);
@@ -47,23 +36,9 @@ public class AttendanceService(IUnitOfWork unitOfWork, AppDbContext context, ICu
 
     public async Task<Result<AttendanceDto>> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var query = context.Attendances.AsNoTracking()
+        IQueryable<Attendance> filtered = scope.Attendances().AsNoTracking()
             .Include(a => a.Student)
             .Include(a => a.Class).ThenInclude(c => c.School);
-
-        var filtered = currentUser.Role switch
-        {
-            "Admin" => query,
-            "Director" => query.Where(a => a.Class.SchoolId == currentUser.SchoolId),
-            "Teacher" => query.Where(a => context.TeacherClasses
-                .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == a.ClassId)),
-            "Orientador" => query.Where(a => context.OrientadorClasses
-                .Any(oc => oc.OrientadorId == currentUser.UserId && oc.ClassId == a.ClassId)),
-            "Student" => query.Where(a => a.StudentId == currentUser.StudentId),
-            "Parent" => query.Where(a => context.ParentStudents
-                .Any(ps => ps.ParentId == currentUser.UserId && ps.StudentId == a.StudentId)),
-            _ => query.Where(_ => false)
-        };
 
         var attendance = await filtered.FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
         return attendance is null
