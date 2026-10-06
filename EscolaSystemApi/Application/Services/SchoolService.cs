@@ -54,18 +54,20 @@ public class SchoolService(IUnitOfWork unitOfWork, ICurrentUserService currentUs
 
     public async Task<Result<SchoolDto>> CreateAsync(CreateSchoolDto dto, CancellationToken cancellationToken = default)
     {
+        var email = dto.Email.Trim();
         var exists = await unitOfWork.Repository<School>()
-            .ExistsAsync(s => s.Email == dto.Email, cancellationToken);
+            .ExistsAsync(s => s.Email == email, cancellationToken);
 
         if (exists)
             return Result<SchoolDto>.Conflict("Já existe uma escola com este e-mail.");
 
         var school = new School
         {
-            Name = dto.Name,
-            Address = dto.Address,
-            Phone = dto.Phone,
-            Email = dto.Email
+            Name = dto.Name.Trim(),
+            Address = dto.Address.Trim(),
+            // Telefone gravado sempre no mesmo formato, digitado com ou sem máscara
+            Phone = BrazilianPhone.Format(dto.Phone),
+            Email = email
         };
 
         await unitOfWork.Repository<School>().AddAsync(school, cancellationToken);
@@ -82,16 +84,17 @@ public class SchoolService(IUnitOfWork unitOfWork, ICurrentUserService currentUs
         if (school is null)
             return Result<SchoolDto>.NotFound("Escola não encontrada.");
 
+        var email = dto.Email.Trim();
         var emailInUse = await context.Schools
-            .AnyAsync(x => x.Email == dto.Email && x.Id != id, cancellationToken);
+            .AnyAsync(x => x.Email == email && x.Id != id, cancellationToken);
 
         if (emailInUse)
             return Result<SchoolDto>.Conflict("Já existe uma escola com este e-mail.");
 
-        school.Name = dto.Name;
-        school.Address = dto.Address;
-        school.Phone = dto.Phone;
-        school.Email = dto.Email;
+        school.Name = dto.Name.Trim();
+        school.Address = dto.Address.Trim();
+        school.Phone = BrazilianPhone.Format(dto.Phone);
+        school.Email = email;
         school.IsActive = dto.IsActive;
         school.UpdatedAt = DateTime.UtcNow;
 
