@@ -102,6 +102,93 @@ public class PendingWorkService(IUnitOfWork unitOfWork, AppDbContext context, IC
         return await GetByIdAsync(id, cancellationToken);
     }
 
+    public async Task<Result<ClassAssignmentDto>> CreateForClassAsync(CreateClassAssignmentDto dto, CancellationToken cancellationToken = default)
+    {
+        var cls = await context.Classes.FirstOrDefaultAsync(c => c.Id == dto.ClassId, cancellationToken);
+        if (cls is null)
+            return Result<ClassAssignmentDto>.NotFound("Turma não encontrada.");
+
+        if (!await CanManageClassAsync(cls, cancellationToken))
+            return Result<ClassAssignmentDto>.Forbidden("Você não pode lançar trabalhos nesta turma.");
+
+        var studentIds = await context.Students
+            .Where(s => s.ClassId == cls.Id && s.IsActive)
+            .Select(s => s.Id)
+            .ToListAsync(cancellationToken);
+
+        if (studentIds.Count == 0)
+            return Result<ClassAssignmentDto>.BadRequest("A turma não tem alunos ativos.");
+
+        // Um registro por aluno, todos com o mesmo AssignmentId, gravados juntos: ou a turma toda recebe, ou ninguém
+        var assignmentId = Guid.NewGuid();
+        context.PendingWorks.AddRange(studentIds.Select(studentId => new PendingWork
+        {
+            AssignmentId = assignmentId,
+            StudentId = studentId,
+            ClassId = cls.Id,
+            Title = dto.Title.Trim(),
+            Description = dto.Description.Trim(),
+            DueDate = dto.DueDate
+        }));
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return Result<ClassAssignmentDto>.Created(new ClassAssignmentDto(
+            assignmentId, cls.Id, cls.Name, dto.Title.Trim(), dto.Description.Trim(), dto.DueDate, studentIds.Count, 0));
+    }
+
+    public async Task<Result<ClassAssignmentDto>> UpdateAssignmentAsync(Guid assignmentId, UpdateAssignmentDto dto, CancellationToken cancellationToken = default)
+    {
+        var works = await context.PendingWorks.Include(p => p.Class)
+            .Where(p => p.AssignmentId == assignmentId)
+            .ToListAsync(cancellationToken);
+
+        if (works.Count == 0)
+            return Result<ClassAssignmentDto>.NotFound("Trabalho não encontrado.");
+
+        var cls = works[0].Class;
+        if (!await CanManageClassAsync(cls, cancellationToken))
+            return Result<ClassAssignmentDto>.Forbidden("Você não pode alterar trabalhos desta turma.");
+
+        foreach (var work in works)
+        {
+            work.Title = dto.Title.Trim();
+            work.Description = dto.Description.Trim();
+            work.DueDate = dto.DueDate;
+        }
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return Result<ClassAssignmentDto>.Success(new ClassAssignmentDto(
+            assignmentId, cls.Id, cls.Name, dto.Title.Trim(), dto.Description.Trim(), dto.DueDate,
+            works.Count, works.Count(w => w.IsDelivered)));
+    }
+
+    public async Task<Result<bool>> DeleteAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken = default)
+    {
+        var works = await context.PendingWorks.Include(p => p.Class)
+            .Where(p => p.AssignmentId == assignmentId)
+            .ToListAsync(cancellationToken);
+
+        if (works.Count == 0)
+            return Result<bool>.NotFound("Trabalho não encontrado.");
+
+        if (!await CanManageClassAsync(works[0].Class, cancellationToken))
+            return Result<bool>.Forbidden("Você não pode excluir trabalhos desta turma.");
+
+        context.PendingWorks.RemoveRange(works);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return Result<bool>.NoContent();
+    }
+
+    // Quem lança trabalho na turma pode corrigi-lo ou excluí-lo: o professor dela, a direção da escola e o admin
+    private async Task<bool> CanManageClassAsync(Class cls, CancellationToken cancellationToken) => currentUser.Role switch
+    {
+        "Admin" => true,
+        "Director" => cls.SchoolId == currentUser.SchoolId,
+        "Teacher" => await context.TeacherClasses
+            .AnyAsync(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == cls.Id, cancellationToken),
+        _ => false
+    };
+
     private IQueryable<PendingWork> ScopedWorks()
     {
         var query = context.PendingWorks.AsNoTracking()
@@ -125,5 +212,5 @@ public class PendingWorkService(IUnitOfWork unitOfWork, AppDbContext context, IC
 
     private static PendingWorkDto ToDto(PendingWork p) =>
         new(p.Id, p.StudentId, p.Student?.Name ?? string.Empty, p.ClassId, p.Class?.Name ?? string.Empty,
-            p.Title, p.Description, p.DueDate, p.IsDelivered, p.DeliveredAt, p.CreatedAt);
+            p.Title, p.Description, p.DueDate, p.IsDelivered, p.DeliveredAt, p.CreatedAt, p.AssignmentId);
 }
