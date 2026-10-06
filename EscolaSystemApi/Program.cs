@@ -22,7 +22,8 @@ try
         config.ReadFrom.Configuration(ctx.Configuration)
               .ReadFrom.Services(services)
               .Enrich.FromLogContext()
-              .WriteTo.Console();
+              // TraceId no fim da linha: liga o log ao trace do OpenTelemetry da mesma requisição
+              .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {TraceId}{NewLine}{Exception}");
 
         // Em container o log vai só para o console; arquivo local apenas quando configurado
         var logFile = ctx.Configuration["Logs:FilePath"];
@@ -48,6 +49,7 @@ try
     builder.Services.AddJwtAuthentication(builder.Configuration);
     builder.Services.AddCorsPolicy(builder.Configuration, builder.Environment);
     builder.Services.AddForwardedHeadersSupport(builder.Configuration);
+    builder.Services.AddObservability(builder.Configuration, builder.Environment);
     builder.Services.AddRateLimiting(builder.Configuration);
     builder.Services.AddOpenApiWithScalar();
 
