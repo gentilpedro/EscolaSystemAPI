@@ -11,7 +11,7 @@ namespace EscolaSystemApi.Tests.Services;
 public class DisciplinaryCallServiceTests
 {
     [Fact]
-    public async Task GetAllAsync_Admin_ReturnsAllCalls()
+    public async Task GetAllAsync_Admin_SeesNothing()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
@@ -27,7 +27,7 @@ public class DisciplinaryCallServiceTests
         var result = await service.GetAllAsync(new PagedQuery());
 
         result.IsSuccess.Should().BeTrue();
-        result.Data!.Items.Should().HaveCount(2);
+        result.Data!.Items.Should().BeEmpty();
     }
 
     [Fact]
@@ -39,7 +39,7 @@ public class DisciplinaryCallServiceTests
         var cls = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls.Id);
 
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new DisciplinaryCallService(uow, context, currentUser);
 
         var dto = new CreateDisciplinaryCallDto(student.Id, "Comportamento inadequado em sala");
@@ -122,7 +122,7 @@ public class DisciplinaryCallServiceTests
         var cls = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls.Id);
         var call = DbContextHelper.CreateDisciplinaryCall(context, student.Id);
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new DisciplinaryCallService(uow, context, currentUser);
 
         var dto = new UpdateDisciplinaryCallDto("Descrição atualizada");

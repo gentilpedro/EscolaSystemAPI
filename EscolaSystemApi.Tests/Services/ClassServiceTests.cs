@@ -10,7 +10,7 @@ namespace EscolaSystemApi.Tests.Services;
 public class ClassServiceTests
 {
     [Fact]
-    public async Task GetAllAsync_Admin_ReturnsAllClasses()
+    public async Task GetAllAsync_Admin_SeesNothing()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
@@ -24,7 +24,7 @@ public class ClassServiceTests
         var result = await service.GetAllAsync(new PagedQuery());
 
         result.IsSuccess.Should().BeTrue();
-        result.Data!.Items.Should().HaveCount(2);
+        result.Data!.Items.Should().BeEmpty();
     }
 
     [Fact]
@@ -79,13 +79,13 @@ public class ClassServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_Admin_UpdatesClass()
+    public async Task UpdateAsync_Director_UpdatesClass()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
         var school = DbContextHelper.CreateSchool(context);
         var cls = DbContextHelper.CreateClass(context, school.Id);
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new ClassService(uow, context, currentUser);
 
         var dto = new UpdateClassDto("Turma Atualizada", 2026, school.Id, true);

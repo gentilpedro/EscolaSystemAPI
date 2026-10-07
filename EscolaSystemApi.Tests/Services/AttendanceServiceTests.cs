@@ -10,7 +10,7 @@ namespace EscolaSystemApi.Tests.Services;
 public class AttendanceServiceTests
 {
     [Fact]
-    public async Task GetAllAsync_Admin_ReturnsAllAttendances()
+    public async Task GetAllAsync_Admin_SeesNothing()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
@@ -26,7 +26,7 @@ public class AttendanceServiceTests
         var result = await service.GetAllAsync(new PagedQuery());
 
         result.IsSuccess.Should().BeTrue();
-        result.Data!.Items.Should().HaveCount(2);
+        result.Data!.Items.Should().BeEmpty();
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class AttendanceServiceTests
         var cls = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls.Id);
 
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new AttendanceService(uow, context, currentUser);
 
         var dto = new CreateAttendanceDto(student.Id, cls.Id, DateOnly.FromDateTime(DateTime.Today), true, null);
@@ -82,7 +82,7 @@ public class AttendanceServiceTests
         var student = DbContextHelper.CreateStudent(context, cls.Id);
         var date = DateOnly.FromDateTime(DateTime.Today);
 
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new AttendanceService(uow, context, currentUser);
 
         var dto = new CreateAttendanceDto(student.Id, cls.Id, date, true, null);
@@ -116,7 +116,7 @@ public class AttendanceServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_Admin_UpdatesAttendance()
+    public async Task UpdateAsync_Director_UpdatesAttendance()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
@@ -124,7 +124,7 @@ public class AttendanceServiceTests
         var cls = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls.Id);
         var attendance = DbContextHelper.CreateAttendance(context, student.Id, cls.Id, DateOnly.FromDateTime(DateTime.Today));
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new AttendanceService(uow, context, currentUser);
 
         var dto = new UpdateAttendanceDto(false, "Faltou sem justificativa");
@@ -165,7 +165,7 @@ public class AttendanceServiceTests
         var cls1 = DbContextHelper.CreateClass(context, school.Id);
         var cls2 = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls1.Id);
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new AttendanceService(uow, context, currentUser);
 
         // Aluno está na cls1 mas tentando registrar chamada na cls2

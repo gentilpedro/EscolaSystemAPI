@@ -125,7 +125,6 @@ public class DashboardService(AppDbContext context, ICurrentUserService currentU
 
         return currentUser.Role switch
         {
-            "Admin" => staff,
             "Director" => staff.Where(SchoolMembers.BelongsTo(currentUser.SchoolId)),
             _ => staff.Where(_ => false)
         };

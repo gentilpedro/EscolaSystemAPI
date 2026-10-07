@@ -182,10 +182,9 @@ public class PendingWorkService(IUnitOfWork unitOfWork, AppDbContext context, IC
         return Result<bool>.NoContent();
     }
 
-    // Quem lança trabalho na turma pode corrigi-lo ou excluí-lo: o professor dela, a direção da escola e o admin
+    // Quem lança trabalho na turma pode corrigi-lo ou excluí-lo: o professor dela e a direção da escola
     private async Task<bool> CanManageClassAsync(Class cls, CancellationToken cancellationToken) => currentUser.Role switch
     {
-        "Admin" => true,
         "Director" => cls.SchoolId == currentUser.SchoolId,
         "Teacher" => await context.TeacherClasses
             .AnyAsync(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == cls.Id, cancellationToken),

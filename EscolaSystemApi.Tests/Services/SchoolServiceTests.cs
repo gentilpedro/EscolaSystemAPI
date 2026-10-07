@@ -153,4 +153,24 @@ public class SchoolServiceTests
         result.IsSuccess.Should().BeFalse();
         result.StatusCode.Should().Be(404);
     }
+
+    [Fact]
+    public async Task GetByIdAsync_Admin_GetsActiveUserCountButDirectorDoesNot()
+    {
+        var context = DbContextHelper.CreateInMemoryContext();
+        var school = DbContextHelper.CreateSchool(context);
+        DbContextHelper.CreateDirectorUser(context, school.Id);
+        DbContextHelper.CreateTeacherUser(context, school.Id);
+        var inactive = DbContextHelper.CreateParentUser(context, school.Id);
+        inactive.IsActive = false;
+        context.SaveChanges();
+
+        var asAdmin = await new SchoolService(new UnitOfWork(context), new CurrentUserServiceMock(Guid.NewGuid(), "Admin"), context)
+            .GetByIdAsync(school.Id);
+        var asDirector = await new SchoolService(new UnitOfWork(context), new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id), context)
+            .GetByIdAsync(school.Id);
+
+        asAdmin.Data!.ActiveUsers.Should().Be(2);
+        asDirector.Data!.ActiveUsers.Should().BeNull();
+    }
 }

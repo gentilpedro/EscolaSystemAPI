@@ -10,7 +10,7 @@ namespace EscolaSystemApi.Tests.Services;
 public class StudentServiceTests
 {
     [Fact]
-    public async Task GetAllAsync_Admin_ReturnsAllStudents()
+    public async Task GetAllAsync_Admin_SeesNothing()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
@@ -25,7 +25,7 @@ public class StudentServiceTests
         var result = await service.GetAllAsync(new PagedQuery());
 
         result.IsSuccess.Should().BeTrue();
-        result.Data!.Items.Should().HaveCount(2);
+        result.Data!.Items.Should().BeEmpty();
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public class StudentServiceTests
         var school = DbContextHelper.CreateSchool(context);
         var cls = DbContextHelper.CreateClass(context, school.Id);
 
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new StudentService(uow, context, currentUser);
 
         var dto = new CreateStudentDto("Aluno Novo", "aluno@test.com", "MAT001", new DateOnly(2005, 1, 1), cls.Id);
@@ -76,7 +76,7 @@ public class StudentServiceTests
         var school = DbContextHelper.CreateSchool(context);
         var cls = DbContextHelper.CreateClass(context, school.Id);
 
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new StudentService(uow, context, currentUser);
 
         var dto = new CreateStudentDto("Aluno", "aluno@test.com", "MAT001", new DateOnly(2005, 1, 1), cls.Id);
@@ -107,14 +107,14 @@ public class StudentServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_Admin_UpdatesStudent()
+    public async Task UpdateAsync_Director_UpdatesStudent()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
         var school = DbContextHelper.CreateSchool(context);
         var cls = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls.Id);
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new StudentService(uow, context, currentUser);
 
         var dto = new UpdateStudentDto("Nome Atualizado", "novo@email.com", student.Registration, student.BirthDate, cls.Id, true);
@@ -125,14 +125,14 @@ public class StudentServiceTests
     }
 
     [Fact]
-    public async Task DeleteAsync_Admin_DeletesStudent()
+    public async Task DeleteAsync_Director_DeletesStudent()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
         var school = DbContextHelper.CreateSchool(context);
         var cls = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls.Id);
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new StudentService(uow, context, currentUser);
 
         var result = await service.DeleteAsync(student.Id);

@@ -47,9 +47,15 @@ public class SchoolService(IUnitOfWork unitOfWork, ICurrentUserService currentUs
             return Result<SchoolDto>.Forbidden("Você não tem acesso a esta escola.");
 
         var school = await unitOfWork.Repository<School>().GetByIdAsync(id, cancellationToken);
-        return school is null
-            ? Result<SchoolDto>.NotFound("Escola não encontrada.")
-            : Result<SchoolDto>.Success(ToDto(school));
+        if (school is null)
+            return Result<SchoolDto>.NotFound("Escola não encontrada.");
+
+        if (currentUser.Role != "Admin")
+            return Result<SchoolDto>.Success(ToDto(school));
+
+        // O admin não vê as pessoas da escola, só quantas perdem ou recuperam o acesso ao desativar ou reativar
+        var activeUsers = await context.Users.Where(SchoolMembers.BelongsTo(id)).CountAsync(u => u.IsActive, cancellationToken);
+        return Result<SchoolDto>.Success(ToDto(school) with { ActiveUsers = activeUsers });
     }
 
     public async Task<Result<SchoolDto>> CreateAsync(CreateSchoolDto dto, CancellationToken cancellationToken = default)

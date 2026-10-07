@@ -15,6 +15,10 @@ public class UserService(
     ICpfEncryptionService cpfEncryption) : IUserService
 {
     private bool IsDirector => currentUser.Role == "Director";
+    private bool IsAdmin => currentUser.Role == "Admin";
+
+    // O administrador cuida do sistema: só gerencia administradores e diretores, nunca as pessoas das escolas
+    private const string PlatformOnlyMessage = "O administrador gerencia apenas administradores e diretores.";
 
     public async Task<Result<PagedResult<UserListDto>>> GetAllAsync(PagedQuery query, Guid? schoolId = null, int? roleId = null, string? search = null, bool? isActive = null, CancellationToken cancellationToken = default)
     {
@@ -124,6 +128,9 @@ public class UserService(
 
         if (user is null)
             return Result<UserListDto>.NotFound("Usuário não encontrado.");
+
+        if (IsAdmin && !RoleIds.Platform.Contains(user.RoleId))
+            return Result<UserListDto>.Forbidden(PlatformOnlyMessage);
 
         var isSelf = user.Id == currentUser.UserId;
         // Professor, orientador e responsável continuam nesses perfis: a escola deles muda pelos vínculos, não pela edição
@@ -243,6 +250,9 @@ public class UserService(
 
         if (user is null)
             return Result<bool>.NotFound("Usuário não encontrado.");
+
+        if (IsAdmin && !RoleIds.Platform.Contains(user.RoleId))
+            return Result<bool>.Forbidden(PlatformOnlyMessage);
 
         if (IsDirector && (!RoleIds.SchoolMembers.Contains(user.RoleId)
                            || !await SchoolMembers.BelongsToAsync(context, user.Id, currentUser.SchoolId, cancellationToken)))
@@ -462,7 +472,7 @@ public class UserService(
 
         return currentUser.Role switch
         {
-            "Admin" => query,
+            "Admin" => query.Where(u => u.RoleId == RoleIds.Admin || u.RoleId == RoleIds.Director),
             "Director" => query.Where(SchoolMembers.BelongsTo(currentUser.SchoolId)),
             _ => query.Where(_ => false)
         };
@@ -470,7 +480,8 @@ public class UserService(
 
     private UserListDto ToDto(User u)
     {
-        var cpf = u.CpfEncrypted is not null ? cpfEncryption.Decrypt(u.CpfEncrypted) : null;
+        // O CPF é dado da escola: o administrador não recebe
+        var cpf = !IsAdmin && u.CpfEncrypted is not null ? cpfEncryption.Decrypt(u.CpfEncrypted) : null;
         var classIds = u.TeacherClasses.Select(tc => tc.ClassId)
             .Concat(u.OrientadorClasses.Select(oc => oc.ClassId))
             .Distinct()

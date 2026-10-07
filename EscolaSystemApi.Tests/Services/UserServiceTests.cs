@@ -10,21 +10,38 @@ namespace EscolaSystemApi.Tests.Services;
 public class UserServiceTests
 {
     [Fact]
-    public async Task GetAllAsync_Admin_ReturnsAllUsers()
+    public async Task GetAllAsync_Admin_SeesOnlyAdminsAndDirectorsWithoutCpf()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
+        var cpf = CpfEncryptionHelper.Create();
         var school = DbContextHelper.CreateSchool(context);
-        DbContextHelper.CreateAdminUser(context);
-        DbContextHelper.CreateDirectorUser(context, school.Id);
+        var admin = DbContextHelper.CreateAdminUser(context);
+        var director = DbContextHelper.CreateDirectorUser(context, school.Id);
+        director.CpfEncrypted = cpf.Encrypt("52998224725");
         DbContextHelper.CreateTeacherUser(context, school.Id);
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
-        var service = new UserService(uow, context, currentUser, CpfEncryptionHelper.Create());
+        context.SaveChanges();
+        var service = new UserService(uow, context, new CurrentUserServiceMock(admin.Id, "Admin"), cpf);
 
         var result = await service.GetAllAsync(new PagedQuery());
 
-        result.IsSuccess.Should().BeTrue();
-        result.Data!.Items.Should().HaveCount(3);
+        // O administrador cuida do sistema: não vê as pessoas das escolas nem o CPF de ninguém
+        result.Data!.Items.Select(u => u.Id).Should().BeEquivalentTo([admin.Id, director.Id]);
+        result.Data.Items.Should().OnlyContain(u => u.Cpf == null);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_Admin_CannotSeeTeacher()
+    {
+        var context = DbContextHelper.CreateInMemoryContext();
+        var school = DbContextHelper.CreateSchool(context);
+        var teacher = DbContextHelper.CreateTeacherUser(context, school.Id);
+        var service = new UserService(new UnitOfWork(context), context,
+            new CurrentUserServiceMock(Guid.NewGuid(), "Admin"), CpfEncryptionHelper.Create());
+
+        var result = await service.GetByIdAsync(teacher.Id);
+
+        result.StatusCode.Should().Be(404);
     }
 
     [Fact]
@@ -55,7 +72,7 @@ public class UserServiceTests
         var school = DbContextHelper.CreateSchool(context);
         DbContextHelper.CreateDirectorUser(context, school.Id);
         var teacher = DbContextHelper.CreateTeacherUser(context, school.Id);
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new UserService(uow, context, currentUser, CpfEncryptionHelper.Create());
 
         var result = await service.GetAllAsync(new PagedQuery(), search: search);
@@ -75,7 +92,7 @@ public class UserServiceTests
         var teacher = DbContextHelper.CreateTeacherUser(context, school.Id);
         teacher.IsActive = false;
         context.SaveChanges();
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new UserService(uow, context, currentUser, CpfEncryptionHelper.Create());
 
         var active = await service.GetAllAsync(new PagedQuery(), isActive: true);
@@ -173,17 +190,17 @@ public class UserServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_Admin_UpdatesUser()
+    public async Task UpdateAsync_Admin_UpdatesDirector()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
         var school = DbContextHelper.CreateSchool(context);
-        var teacher = DbContextHelper.CreateTeacherUser(context, school.Id);
+        var director = DbContextHelper.CreateDirectorUser(context, school.Id);
         var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
         var service = new UserService(uow, context, currentUser, CpfEncryptionHelper.Create());
 
-        var dto = new UpdateUserDto("Nome Atualizado", teacher.Email, 3, school.Id, true);
-        var result = await service.UpdateAsync(teacher.Id, dto);
+        var dto = new UpdateUserDto("Nome Atualizado", director.Email, 2, school.Id, true);
+        var result = await service.UpdateAsync(director.Id, dto);
 
         result.IsSuccess.Should().BeTrue();
         result.Data!.Name.Should().Be("Nome Atualizado");
@@ -208,19 +225,34 @@ public class UserServiceTests
     }
 
     [Fact]
-    public async Task DeleteAsync_Admin_DeactivatesUser()
+    public async Task DeleteAsync_Admin_DeactivatesDirector()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
         var school = DbContextHelper.CreateSchool(context);
-        var teacher = DbContextHelper.CreateTeacherUser(context, school.Id);
+        var director = DbContextHelper.CreateDirectorUser(context, school.Id);
         var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
         var service = new UserService(uow, context, currentUser, CpfEncryptionHelper.Create());
 
-        var result = await service.DeleteAsync(teacher.Id);
+        var result = await service.DeleteAsync(director.Id);
 
         result.IsSuccess.Should().BeTrue();
         result.StatusCode.Should().Be(204);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_Admin_CannotDeactivateTeacher()
+    {
+        var context = DbContextHelper.CreateInMemoryContext();
+        var school = DbContextHelper.CreateSchool(context);
+        var teacher = DbContextHelper.CreateTeacherUser(context, school.Id);
+        var service = new UserService(new UnitOfWork(context), context,
+            new CurrentUserServiceMock(Guid.NewGuid(), "Admin"), CpfEncryptionHelper.Create());
+
+        var result = await service.DeleteAsync(teacher.Id);
+
+        result.StatusCode.Should().Be(403);
+        context.Users.Single(u => u.Id == teacher.Id).IsActive.Should().BeTrue();
     }
 
     [Fact]

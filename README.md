@@ -129,7 +129,7 @@ dotnet test EscolaSystemApi.Tests/EscolaSystemApi.Tests.csproj
 
 | ID | Nome | Escopo de visualização |
 |---|---|---|
-| 1 | Admin | Toda a plataforma |
+| 1 | Admin | O sistema: escolas, administradores e diretores. Não vê dados das escolas |
 | 2 | Director | A própria escola |
 | 3 | Teacher | Turmas vinculadas a ele |
 | 4 | Student | Os próprios dados |
@@ -138,7 +138,7 @@ dotnet test EscolaSystemApi.Tests/EscolaSystemApi.Tests.csproj
 
 Regras de criação e edição de usuários:
 
-- **Admin** cria e gerencia escolas, **Administradores** e **Diretores**. Não cria os perfis internos de uma escola nem muda alguém para eles na edição (pode ativar ou desativar mantendo o perfil atual).
+- **Admin** cuida do sistema: cria e gerencia escolas, **Administradores** e **Diretores**. Não tem vínculo com nenhuma escola e não acessa os dados delas: turmas, alunos, notas, chamadas, trabalhos, chamados, relatórios e as pessoas da escola (professores, orientadores, responsáveis e alunos) ficam com a direção. Na lista de usuários, vê só administradores e diretores, sem CPF.
 - **Diretor** cria e gerencia Professor, Aluno, Responsável e Orientador **somente da própria escola**. Não edita Admins/outros diretores, não promove ninguém a Diretor e não move usuários, turmas ou alunos para outra escola.
 - Usuário com perfil **Aluno** precisa estar vinculado a um registro de aluno (`studentId`) da mesma escola, e cada aluno tem no máximo uma conta.
 - **Professor, orientador e responsável podem estar em várias escolas** (`SchoolMemberships`). A escola é adicionada pelo diretor dela com o e-mail da pessoa (`POST /api/schools/{id}/members`), sem criar outra conta. Diretor e aluno têm uma escola só.
@@ -148,6 +148,7 @@ Regras de criação e edição de usuários:
 - A edição de usuário não muda a escola de professor, orientador e responsável: isso é feito pelos vínculos.
 - Exclusão de usuário é lógica (desativa), preservando histórico.
 - A rede nunca fica sem administrador: desativar ou mudar o perfil do último admin ativo responde 409.
+- Nas tabelas de endpoints, **Perfis da escola** são Director, Teacher, Orientador, Student e Parent: o Admin recebe 403 nesses endpoints.
 
 ---
 
@@ -178,14 +179,14 @@ O login não devolve o token no corpo. A API grava três cookies, todos `SameSit
 | GET | `/me` | Autenticado | Dados do usuário logado (inclui `schoolName` e `studentId`) |
 | POST | `/logout` | Sessão (acesso ou refresh) | Revoga a sessão e apaga os cookies |
 | POST | `/change-password` | Autenticado | Troca a **própria** senha com `currentPassword` e `newPassword`. Senha atual errada: 400 e conta para o bloqueio por tentativas. Encerra as outras sessões e mantém a atual |
-| POST | `/reset-password` | Admin, Director | Redefine a senha de **outra** pessoa: Admin, qualquer uma; Diretor, a das pessoas da sua escola. Encerra todas as sessões da conta. Na própria conta responde 400 (use `/change-password`) |
+| POST | `/reset-password` | Admin, Director | Redefine a senha de **outra** pessoa: Admin, a de administradores e diretores; Diretor, a das pessoas da sua escola. Encerra todas as sessões da conta. Na própria conta responde 400 (use `/change-password`) |
 
 ### Escolas — `/api/schools`
 
 | Método | Rota | Auth |
 |---|---|---|
 | GET | `/` | Autenticado (não-admin vê só a própria escola) |
-| GET | `/{id}` | Autenticado |
+| GET | `/{id}` | Autenticado — para o Admin, traz também `activeUsers` (quantas pessoas com conta ativa estão na escola) |
 | POST | `/` | Admin |
 | PUT | `/{id}` | Admin |
 | DELETE | `/{id}` | Admin — `409` se houver turmas ou usuários (desative em vez de excluir) |
@@ -194,14 +195,14 @@ O login não devolve o token no corpo. A API grava três cookies, todos `SameSit
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/?schoolId=&roleId=&search=&isActive=` | Admin, Director — `search` procura no nome e no e-mail, sem diferenciar maiúsculas |
-| GET | `/{id}` | Admin, Director |
-| POST | `/` | Admin, Director |
-| PUT | `/{id}` | Admin, Director |
-| DELETE | `/{id}` | Admin, Director |
-| POST/DELETE | `/{teacherId}/assign-class/{classId}` | Admin, Director |
-| POST/DELETE | `/{parentId}/assign-student/{studentId}` | Admin, Director |
-| POST/DELETE | `/{orientadorId}/assign-orientador-class/{classId}` | Admin, Director |
+| GET | `/?schoolId=&roleId=&search=&isActive=` | Admin (só administradores e diretores, sem CPF), Director — `search` procura no nome e no e-mail, sem diferenciar maiúsculas |
+| GET | `/{id}` | Admin (administradores e diretores), Director |
+| POST | `/` | Admin (administradores e diretores), Director |
+| PUT | `/{id}` | Admin (administradores e diretores), Director |
+| DELETE | `/{id}` | Admin (administradores e diretores), Director |
+| POST/DELETE | `/{teacherId}/assign-class/{classId}` | Director |
+| POST/DELETE | `/{parentId}/assign-student/{studentId}` | Director |
+| POST/DELETE | `/{orientadorId}/assign-orientador-class/{classId}` | Director |
 
 A listagem retorna `classIds` (turmas de professor/orientador), `studentIds` (filhos do responsável) e `schools` (escolas com vínculo ativo). O filtro `schoolId` e o escopo do diretor consideram todas as escolas da pessoa. No `PUT`, `cpf: null` mantém o CPF atual e `cpf: ""` remove.
 
@@ -209,38 +210,38 @@ A listagem retorna `classIds` (turmas de professor/orientador), `studentIds` (fi
 
 | Método | Rota | Auth |
 |---|---|---|
-| POST | `/` com `{ "email": "..." }` | Admin, Director (da escola) — professor, orientador ou responsável já cadastrado entra na escola |
-| DELETE | `/{userId}` | Admin, Director (da escola) — a pessoa sai da escola (vínculos encerrados, histórico mantido) |
+| POST | `/` com `{ "email": "..." }` | Director (da escola) — professor, orientador ou responsável já cadastrado entra na escola |
+| DELETE | `/{userId}` | Director (da escola) — a pessoa sai da escola (vínculos encerrados, histórico mantido) |
 
 ### Turmas — `/api/classes`
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/?schoolId=` | Autenticado (aluno e responsável veem as próprias turmas) |
-| GET | `/{id}` | Autenticado |
-| POST | `/` | Admin, Director |
-| PUT | `/{id}` | Admin, Director |
-| DELETE | `/{id}` | Admin, Director — `409` se houver alunos ou histórico |
+| GET | `/?schoolId=` | Perfis da escola (aluno e responsável veem as próprias turmas) |
+| GET | `/{id}` | Perfis da escola |
+| POST | `/` | Director |
+| PUT | `/{id}` | Director |
+| DELETE | `/{id}` | Director — `409` se houver alunos ou histórico |
 
 ### Alunos — `/api/students`
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/?classId=&schoolId=&isActive=` | Autenticado (`isActive=true` traz só alunos ativos) |
-| GET | `/{id}` | Autenticado |
-| POST | `/` | Admin, Director |
-| PUT | `/{id}` | Admin, Director (transferência só entre turmas da mesma escola) |
-| DELETE | `/{id}` | Admin, Director — `409` se houver histórico escolar |
+| GET | `/?classId=&schoolId=&isActive=` | Perfis da escola (`isActive=true` traz só alunos ativos) |
+| GET | `/{id}` | Perfis da escola |
+| POST | `/` | Director |
+| PUT | `/{id}` | Director (transferência só entre turmas da mesma escola) |
+| DELETE | `/{id}` | Director — `409` se houver histórico escolar |
 
 ### Notas — `/api/grades`
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/?classId=&studentId=` | Autenticado |
-| GET | `/{id}` | Autenticado |
-| POST | `/` | Admin, Teacher, Director |
-| PUT | `/{id}` | Admin, Teacher, Director |
-| DELETE | `/{id}` | Admin, Teacher, Director |
+| GET | `/?classId=&studentId=` | Perfis da escola |
+| GET | `/{id}` | Perfis da escola |
+| POST | `/` | Teacher, Director |
+| PUT | `/{id}` | Teacher, Director |
+| DELETE | `/{id}` | Teacher, Director |
 
 Uma nota por aluno, turma, matéria e período (409 se repetir). Períodos aceitos: `1º Trimestre`, `2º Trimestre`, `3º Trimestre`, `Recuperação` e `Final` (`1° Trimestre` com símbolo de grau também é aceito). Notas antigas com período de bimestre continuam nas consultas; para editá-las, escolha um trimestre.
 
@@ -248,22 +249,22 @@ Uma nota por aluno, turma, matéria e período (409 se repetir). Períodos aceit
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/?classId=&studentId=&date=` | Autenticado |
-| GET | `/{id}` | Autenticado |
-| POST | `/` | Admin, Teacher, Director |
-| PUT | `/{id}` | Admin, Teacher, Director |
-| POST | `/bulk` | Admin, Teacher, Director — mesma turma, mesma data, alunos da turma, sem repetição |
+| GET | `/?classId=&studentId=&date=` | Perfis da escola |
+| GET | `/{id}` | Perfis da escola |
+| POST | `/` | Teacher, Director |
+| PUT | `/{id}` | Teacher, Director |
+| POST | `/bulk` | Teacher, Director — mesma turma, mesma data, alunos da turma, sem repetição |
 
 ### Ocorrências Disciplinares — `/api/disciplinary-calls`
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/?schoolId=&studentId=&classId=&status=` | Autenticado |
-| GET | `/{id}` | Autenticado |
-| POST | `/` | Admin, Teacher, Director, Orientador |
-| PUT | `/{id}` | Admin, Teacher, Director, Orientador (apenas pendentes; professor só edita as que abriu) |
-| POST | `/{id}/approve` | Admin, Director, Orientador |
-| POST | `/{id}/reject` | Admin, Director, Orientador |
+| GET | `/?schoolId=&studentId=&classId=&status=` | Perfis da escola |
+| GET | `/{id}` | Perfis da escola |
+| POST | `/` | Teacher, Director, Orientador |
+| PUT | `/{id}` | Teacher, Director, Orientador (apenas pendentes; professor só edita as que abriu) |
+| POST | `/{id}/approve` | Director, Orientador |
+| POST | `/{id}/reject` | Director, Orientador |
 
 Status: `1` Pendente, `2` Aprovado, `3` Rejeitado. A resposta inclui o autor (`createdById`, `createdByName`) e a turma do aluno.
 
@@ -271,13 +272,13 @@ Status: `1` Pendente, `2` Aprovado, `3` Rejeitado. A resposta inclui o autor (`c
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/?classId=&studentId=` | Autenticado |
-| GET | `/{id}` | Autenticado |
-| POST | `/` | Admin, Teacher, Director — um aluno; cada chamada é um trabalho próprio |
-| POST | `/class` | Admin, Teacher (da turma), Director (da escola) — lança para todos os alunos ativos da turma de uma vez |
-| PUT | `/assignments/{assignmentId}` | Admin, Teacher (da turma), Director (da escola) — corrige título, descrição e prazo em todos os alunos; entregas continuam |
-| DELETE | `/assignments/{assignmentId}` | Admin, Teacher (da turma), Director (da escola) — exclui o trabalho de todos os alunos |
-| PUT | `/{id}/delivered` | Admin, Teacher, Director, Student (aluno só entrega o próprio trabalho) |
+| GET | `/?classId=&studentId=` | Perfis da escola |
+| GET | `/{id}` | Perfis da escola |
+| POST | `/` | Teacher, Director — um aluno; cada chamada é um trabalho próprio |
+| POST | `/class` | Teacher (da turma), Director (da escola) — lança para todos os alunos ativos da turma de uma vez |
+| PUT | `/assignments/{assignmentId}` | Teacher (da turma), Director (da escola) — corrige título, descrição e prazo em todos os alunos; entregas continuam |
+| DELETE | `/assignments/{assignmentId}` | Teacher (da turma), Director (da escola) — exclui o trabalho de todos os alunos |
+| PUT | `/{id}/delivered` | Teacher, Director, Student (aluno só entrega o próprio trabalho) |
 
 A API guarda um registro por aluno; o `assignmentId` liga os registros do mesmo trabalho da turma.
 
@@ -286,8 +287,8 @@ A API guarda um registro por aluno; o `assignmentId` liga os registros do mesmo 
 | Método | Rota | Auth | Descrição |
 |---|---|---|---|
 | GET | `/api/admin/stats` | Admin | Totais da plataforma |
-| GET | `/api/dashboard/stats` | Autenticado | Totais no escopo do usuário: turmas, alunos, funcionários, ocorrências pendentes, trabalhos pendentes, média geral e % de presença |
-| GET | `/api/reports/classes?schoolId=` | Admin, Director, Teacher, Orientador | Por turma: alunos, média, % de presença e ocorrências |
+| GET | `/api/dashboard/stats` | Perfis da escola | Totais no escopo do usuário: turmas, alunos, funcionários, ocorrências pendentes, trabalhos pendentes, média geral e % de presença |
+| GET | `/api/reports/classes?schoolId=` | Director, Teacher, Orientador | Por turma: alunos, média, % de presença e ocorrências |
 
 ---
 
