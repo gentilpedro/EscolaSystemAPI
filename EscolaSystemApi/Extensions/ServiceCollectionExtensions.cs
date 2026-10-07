@@ -80,6 +80,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDisciplinaryCallService, DisciplinaryCallService>();
         services.AddScoped<IPendingWorkService, PendingWorkService>();
         services.AddScoped<IDashboardService, DashboardService>();
+        services.AddScoped<IAuditService, AuditService>();
 
         return services;
     }

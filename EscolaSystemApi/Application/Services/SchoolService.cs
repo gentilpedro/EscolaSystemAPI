@@ -77,6 +77,7 @@ public class SchoolService(IUnitOfWork unitOfWork, ICurrentUserService currentUs
         };
 
         await unitOfWork.Repository<School>().AddAsync(school, cancellationToken);
+        await AuditTrail.RecordAsync(context, currentUser.UserId, AuditActions.SchoolCreated, school, cancellationToken: cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<SchoolDto>.Created(ToDto(school));
     }
@@ -97,12 +98,22 @@ public class SchoolService(IUnitOfWork unitOfWork, ICurrentUserService currentUs
         if (emailInUse)
             return Result<SchoolDto>.Conflict("Já existe uma escola com este e-mail.");
 
+        var before = (school.Name, school.Address, school.Phone, school.Email, school.IsActive);
         school.Name = dto.Name.Trim();
         school.Address = dto.Address.Trim();
         school.Phone = BrazilianPhone.Format(dto.Phone);
         school.Email = email;
         school.IsActive = dto.IsActive;
         school.UpdatedAt = DateTime.UtcNow;
+
+        var details = AuditTrail.Changes(
+            ("Nome", before.Name, school.Name), ("Endereço", before.Address, school.Address),
+            ("Telefone", before.Phone, school.Phone), ("E-mail", before.Email, school.Email));
+        var action = before.IsActive == school.IsActive ? AuditActions.SchoolUpdated
+            : school.IsActive ? AuditActions.SchoolReactivated : AuditActions.SchoolDeactivated;
+        // Salvar sem mudar nada não vira registro
+        if (action != AuditActions.SchoolUpdated || details is not null)
+            await AuditTrail.RecordAsync(context, currentUser.UserId, action, school, details, cancellationToken);
 
         unitOfWork.Repository<School>().Update(school);
         await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -122,6 +133,7 @@ public class SchoolService(IUnitOfWork unitOfWork, ICurrentUserService currentUs
         if (hasDependents)
             return Result<bool>.Conflict("A escola possui turmas ou usuários vinculados. Desative-a em vez de excluir.");
 
+        await AuditTrail.RecordAsync(context, currentUser.UserId, AuditActions.SchoolDeleted, school, cancellationToken: cancellationToken);
         unitOfWork.Repository<School>().Remove(school);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<bool>.NoContent();

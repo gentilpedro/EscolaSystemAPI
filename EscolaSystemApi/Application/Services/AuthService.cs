@@ -161,7 +161,7 @@ public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbCo
 
     // Cadastro direto de administradores da plataforma.
     // Demais perfis são criados por /api/users, que aplica as regras de escola e hierarquia.
-    public async Task<Result<UserDto>> RegisterAsync(RegisterRequestDto dto, CancellationToken cancellationToken = default)
+    public async Task<Result<UserDto>> RegisterAsync(RegisterRequestDto dto, Guid? actorId = null, CancellationToken cancellationToken = default)
     {
         if (dto.RoleId != 1)
             return Result<UserDto>.BadRequest("Este endpoint cria apenas administradores. Use /api/users para os demais perfis.");
@@ -181,6 +181,8 @@ public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbCo
         };
 
         await unitOfWork.Repository<User>().AddAsync(user, cancellationToken);
+        await AuditTrail.RecordAsync(context, actorId, AuditActions.UserCreated, user,
+            $"Perfil: {AuditTrail.RoleLabel(user.RoleId)}", cancellationToken: cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         // Quem cadastra continua com a própria sessão: o novo admin entra depois com a senha dele
@@ -231,6 +233,7 @@ public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbCo
         unitOfWork.Repository<User>().Update(user);
         // Senha redefinida por outra pessoa derruba todas as sessões da conta
         await UserSessions.RevokeAllAsync(context, user.Id, cancellationToken: cancellationToken);
+        await AuditTrail.RecordAsync(context, requestingUserId, AuditActions.UserPasswordReset, user, cancellationToken: cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         return Result<bool>.Success(true);

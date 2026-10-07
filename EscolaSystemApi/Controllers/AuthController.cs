@@ -58,7 +58,7 @@ public class AuthController(IAuthService authService, AuthCookies cookies) : Bas
         if (!validation.IsValid)
             return ValidationFailed(validation);
 
-        return HandleResult(await authService.RegisterAsync(dto, cancellationToken));
+        return HandleResult(await authService.RegisterAsync(dto, CurrentUserId, cancellationToken));
     }
 
     [HttpGet("me")]
