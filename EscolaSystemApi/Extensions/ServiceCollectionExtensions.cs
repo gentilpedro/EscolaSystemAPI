@@ -82,6 +82,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<ITicketService, TicketService>();
+        services.AddScoped<ISchoolSummaryService, SchoolSummaryService>();
 
         return services;
     }

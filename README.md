@@ -314,6 +314,8 @@ O que a direção faz com professores, orientadores, responsáveis e alunos tamb
 
 | Método | Rota | Auth | Descrição |
 |---|---|---|---|
+| GET | `/api/admin/schools/summary` | Admin | Todas as escolas com diretor (sim ou não), turmas e alunos ativos, pessoas ativas e último lançamento: o painel aponta implantação incompleta |
+| GET | `/api/admin/schools/{id}/summary` | Admin | Uma escola: dados, contato do diretor, turmas e alunos ativos, pessoas ativas por perfil e último lançamento de nota ou chamada. Só contagens, sem dados pessoais da escola |
 | GET | `/api/admin/stats` | Admin | Totais da plataforma, incluindo `lockedAccounts` (administradores e diretores bloqueados agora) |
 | GET | `/api/dashboard/stats` | Perfis da escola | Totais no escopo do usuário: turmas, alunos, funcionários, ocorrências pendentes, trabalhos pendentes, média geral e % de presença |
 | GET | `/api/reports/classes?schoolId=` | Director, Teacher, Orientador | Por turma: alunos, média, % de presença e ocorrências |
