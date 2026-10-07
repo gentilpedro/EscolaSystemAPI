@@ -11,6 +11,7 @@ public interface IUserService
     Task<Result<UserListDto>> UpdateAsync(Guid id, UpdateUserDto dto, CancellationToken cancellationToken = default);
     Task<Result<bool>> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Result<bool>> UnlockAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<Result<bool>> RevokeSessionsAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Result<bool>> AssignClassAsync(Guid teacherId, Guid classId, CancellationToken cancellationToken = default);
     Task<Result<bool>> UnassignClassAsync(Guid teacherId, Guid classId, CancellationToken cancellationToken = default);
     Task<Result<bool>> AssignStudentAsync(Guid parentId, Guid studentId, CancellationToken cancellationToken = default);

@@ -8,5 +8,9 @@ public class UserSession : BaseEntity
     // Renovada a cada rotação do refresh token
     public DateTime ExpiresAt { get; set; }
     public DateTime? RevokedAt { get; set; }
+    // Navegador e sistema de quem entrou (User-Agent), para a pessoa reconhecer o aparelho
+    public string? UserAgent { get; set; }
+    // Último login ou renovação da sessão
+    public DateTime? LastUsedAt { get; set; }
     public ICollection<RefreshToken> RefreshTokens { get; set; } = [];
 }

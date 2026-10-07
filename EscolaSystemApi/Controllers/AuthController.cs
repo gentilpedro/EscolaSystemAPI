@@ -22,7 +22,7 @@ public class AuthController(IAuthService authService, AuthCookies cookies) : Bas
         if (!validation.IsValid)
             return ValidationFailed(validation);
 
-        var result = await authService.LoginAsync(dto, cancellationToken);
+        var result = await authService.LoginAsync(dto, Request.Headers.UserAgent.ToString(), cancellationToken);
         if (!result.IsSuccess)
             return HandleResult(result);
 
@@ -88,7 +88,25 @@ public class AuthController(IAuthService authService, AuthCookies cookies) : Bas
         return HandleResult(await authService.ChangePasswordAsync(CurrentUserId, dto, CurrentSessionId, cancellationToken));
     }
 
-    // Senha de outra pessoa: admin (qualquer uma) ou diretor (da própria escola)
+    // Aparelhos conectados: as sessões abertas da própria conta
+    [HttpGet("sessions")]
+    [Authorize]
+    public async Task<IActionResult> Sessions(CancellationToken cancellationToken)
+        => HandleResult(await authService.GetSessionsAsync(CurrentUserId, CurrentSessionId, cancellationToken));
+
+    // Sai de um aparelho; o atual sai pelo logout
+    [HttpDelete("sessions/{id:guid}")]
+    [Authorize]
+    public async Task<IActionResult> RevokeSession(Guid id, CancellationToken cancellationToken)
+        => HandleResult(await authService.RevokeSessionAsync(CurrentUserId, id, CurrentSessionId, cancellationToken));
+
+    // Sai de todos os outros aparelhos e mantém este
+    [HttpDelete("sessions")]
+    [Authorize]
+    public async Task<IActionResult> RevokeOtherSessions(CancellationToken cancellationToken)
+        => HandleResult(await authService.RevokeOtherSessionsAsync(CurrentUserId, CurrentSessionId, cancellationToken));
+
+    // Senha de outra pessoa: admin (de administradores e diretores) ou diretor (da própria escola)
     [HttpPost("reset-password")]
     [Authorize]
     [EnableRateLimiting("AuthPolicy")]
