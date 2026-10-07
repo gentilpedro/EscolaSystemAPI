@@ -20,7 +20,7 @@ public class UserService(
     // O administrador cuida do sistema: só gerencia administradores e diretores, nunca as pessoas das escolas
     private const string PlatformOnlyMessage = "O administrador gerencia apenas administradores e diretores.";
 
-    public async Task<Result<PagedResult<UserListDto>>> GetAllAsync(PagedQuery query, Guid? schoolId = null, int? roleId = null, string? search = null, bool? isActive = null, bool? locked = null, CancellationToken cancellationToken = default)
+    public async Task<Result<PagedResult<UserListDto>>> GetAllAsync(PagedQuery query, Guid? schoolId = null, int? roleId = null, string? search = null, bool? isActive = null, bool? locked = null, string? sort = null, CancellationToken cancellationToken = default)
     {
         var filtered = ScopedUsers();
 
@@ -46,23 +46,51 @@ public class UserService(
 
         var totalCount = await filtered.CountAsync(cancellationToken);
         var totalPages = (int)Math.Ceiling(totalCount / (double)query.PageSize);
-        var data = await filtered
-            .OrderBy(u => u.Name)
+        // sort=lastAccess: quem está há mais tempo sem entrar primeiro, quem nunca entrou antes de todos
+        var ordered = IsAdmin && sort == "lastAccess"
+            ? filtered
+                .OrderBy(u => context.UserSessions.Where(s => s.UserId == u.Id)
+                    .Max(s => (DateTime?)(s.LastUsedAt ?? s.CreatedAt)) ?? NeverAccessed)
+                .ThenBy(u => u.Name)
+            : filtered.OrderBy(u => u.Name);
+        var data = await ordered
             .Skip(query.Skip).Take(query.Take)
             .ToListAsync(cancellationToken);
 
+        var lastAccess = await LastAccessAsync(data.Select(u => u.Id).ToList(), cancellationToken);
         return Result<PagedResult<UserListDto>>.Success(
-            new PagedResult<UserListDto>(data.Select(ToDto), query.Page, query.PageSize, totalCount, totalPages));
+            new PagedResult<UserListDto>(data.Select(u => WithLastAccess(ToDto(u), lastAccess)), query.Page, query.PageSize, totalCount, totalPages));
     }
 
     public async Task<Result<UserListDto>> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var user = await ScopedUsers().FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
 
-        return user is null
-            ? Result<UserListDto>.NotFound("Usuário não encontrado.")
-            : Result<UserListDto>.Success(ToDto(user));
+        if (user is null)
+            return Result<UserListDto>.NotFound("Usuário não encontrado.");
+
+        var lastAccess = await LastAccessAsync([user.Id], cancellationToken);
+        return Result<UserListDto>.Success(WithLastAccess(ToDto(user), lastAccess));
     }
+
+    // Data antes de qualquer acesso possível: põe quem nunca entrou no começo da ordenação
+    private static readonly DateTime NeverAccessed = new(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+    // Último acesso vem das sessões (login ou renovação); só o admin recebe, para achar contas abandonadas
+    private async Task<Dictionary<Guid, DateTime>> LastAccessAsync(List<Guid> userIds, CancellationToken cancellationToken)
+    {
+        if (!IsAdmin || userIds.Count == 0)
+            return [];
+
+        return await context.UserSessions
+            .Where(s => userIds.Contains(s.UserId))
+            .GroupBy(s => s.UserId)
+            .Select(g => new { UserId = g.Key, Last = g.Max(s => s.LastUsedAt ?? s.CreatedAt) })
+            .ToDictionaryAsync(x => x.UserId, x => x.Last, cancellationToken);
+    }
+
+    private UserListDto WithLastAccess(UserListDto dto, Dictionary<Guid, DateTime> lastAccess) =>
+        IsAdmin ? dto with { LastAccessAt = lastAccess.TryGetValue(dto.Id, out var last) ? last : null } : dto;
 
     public async Task<Result<UserListDto>> CreateAsync(CreateUserDto dto, CancellationToken cancellationToken = default)
     {
