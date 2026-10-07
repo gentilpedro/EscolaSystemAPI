@@ -10,6 +10,7 @@ public class UserSessionConfiguration : IEntityTypeConfiguration<UserSession>
     {
         builder.HasKey(x => x.Id);
         builder.HasIndex(x => x.UserId);
+        builder.Property(x => x.UserAgent).HasMaxLength(512);
 
         builder.HasOne(x => x.User)
             .WithMany()

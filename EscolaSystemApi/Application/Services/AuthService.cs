@@ -15,7 +15,7 @@ public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbCo
     // Duas abas renovando ao mesmo tempo apresentam o mesmo token: dentro desta janela não é tratado como roubo
     public static readonly TimeSpan RefreshReuseGrace = TimeSpan.FromSeconds(30);
 
-    public async Task<Result<AuthSession>> LoginAsync(LoginRequestDto dto, CancellationToken cancellationToken = default)
+    public async Task<Result<AuthSession>> LoginAsync(LoginRequestDto dto, string? userAgent = null, CancellationToken cancellationToken = default)
     {
         var user = await context.Users
             .Include(u => u.Role)
@@ -62,7 +62,13 @@ public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbCo
         var expired = await context.UserSessions.Where(s => s.UserId == user.Id && s.ExpiresAt <= now).ToListAsync(cancellationToken);
         context.UserSessions.RemoveRange(expired);
 
-        var session = new UserSession { UserId = user.Id, ExpiresAt = now.Add(jwtService.RefreshTokenLifetime) };
+        var session = new UserSession
+        {
+            UserId = user.Id,
+            ExpiresAt = now.Add(jwtService.RefreshTokenLifetime),
+            UserAgent = DeviceDescription.Trim(userAgent),
+            LastUsedAt = now
+        };
         context.UserSessions.Add(session);
         var refreshToken = UserSessions.NewRefreshToken();
         UserSessions.AddRefreshToken(context, session, refreshToken, session.ExpiresAt);
@@ -112,6 +118,7 @@ public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbCo
 
         current.UsedAt = now;
         session.ExpiresAt = now.Add(jwtService.RefreshTokenLifetime);
+        session.LastUsedAt = now;
         var next = UserSessions.NewRefreshToken();
         UserSessions.AddRefreshToken(context, session, next, session.ExpiresAt);
 
@@ -265,6 +272,45 @@ public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbCo
         await UserSessions.RevokeAllAsync(context, user.Id, currentSessionId, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<bool>.Success(true);
+    }
+
+    // ---------- Sessões abertas da própria conta ----------
+
+    public async Task<Result<IReadOnlyList<SessionDto>>> GetSessionsAsync(Guid userId, Guid? currentSessionId, CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var sessions = await context.UserSessions.AsNoTracking()
+            .Where(s => s.UserId == userId && s.RevokedAt == null && s.ExpiresAt > now)
+            .ToListAsync(cancellationToken);
+
+        IReadOnlyList<SessionDto> list = sessions
+            .Select(s => new SessionDto(s.Id, DeviceDescription.From(s.UserAgent), s.CreatedAt, s.LastUsedAt ?? s.CreatedAt, s.Id == currentSessionId))
+            // A atual primeiro, depois a usada mais recentemente
+            .OrderByDescending(s => s.IsCurrent).ThenByDescending(s => s.LastUsedAt)
+            .ToList();
+        return Result<IReadOnlyList<SessionDto>>.Success(list);
+    }
+
+    public async Task<Result<bool>> RevokeSessionAsync(Guid userId, Guid sessionId, Guid? currentSessionId, CancellationToken cancellationToken = default)
+    {
+        if (sessionId == currentSessionId)
+            return Result<bool>.BadRequest("Esta é a sessão deste aparelho. Para sair dele, use Sair.");
+
+        var session = await context.UserSessions
+            .FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == userId && s.RevokedAt == null, cancellationToken);
+        if (session is null)
+            return Result<bool>.NotFound("Sessão não encontrada ou já encerrada.");
+
+        session.RevokedAt = DateTime.UtcNow;
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return Result<bool>.NoContent();
+    }
+
+    public async Task<Result<bool>> RevokeOtherSessionsAsync(Guid userId, Guid? currentSessionId, CancellationToken cancellationToken = default)
+    {
+        await UserSessions.RevokeAllAsync(context, userId, currentSessionId, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return Result<bool>.NoContent();
     }
 
     // Admin altera a de administradores e diretores; Diretor só a de usuários da própria escola abaixo dele na hierarquia

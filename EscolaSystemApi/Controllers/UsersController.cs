@@ -51,6 +51,12 @@ public class UsersController(IUserService userService) : BaseApiController
     public async Task<IActionResult> Unlock(Guid id, CancellationToken cancellationToken)
         => HandleResult(await userService.UnlockAsync(id, cancellationToken));
 
+    // Desconecta de todos os aparelhos sem trocar a senha
+    [HttpDelete("{id:guid}/sessions")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> RevokeSessions(Guid id, CancellationToken cancellationToken)
+        => HandleResult(await userService.RevokeSessionsAsync(id, cancellationToken));
+
     // Vínculos com turmas e alunos são da direção da escola
     [HttpPost("{teacherId:guid}/assign-class/{classId:guid}")]
     [Authorize(Roles = "Director")]

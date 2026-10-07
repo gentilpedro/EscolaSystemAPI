@@ -523,6 +523,27 @@ public class UserService(
         return Result<bool>.NoContent();
     }
 
+    /// <summary>
+    /// Desconecta a pessoa de todos os aparelhos sem trocar a senha (aparelho perdido, por exemplo).
+    /// Só o admin, só de administradores e diretores, e não a própria conta.
+    /// </summary>
+    public async Task<Result<bool>> RevokeSessionsAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var user = await context.Users.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+        if (user is null)
+            return Result<bool>.NotFound("Usuário não encontrado.");
+
+        if (!IsAdmin || !RoleIds.Platform.Contains(user.RoleId))
+            return Result<bool>.Forbidden(PlatformOnlyMessage);
+
+        if (user.Id == currentUser.UserId)
+            return Result<bool>.BadRequest("Para a própria conta, use Aparelhos conectados em Configurações.");
+
+        await UserSessions.RevokeAllAsync(context, user.Id, cancellationToken: cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return Result<bool>.NoContent();
+    }
+
     // ---------- Vínculos com a escola ----------
 
     public async Task<Result<UserListDto>> AddMemberAsync(Guid schoolId, string email, CancellationToken cancellationToken = default)

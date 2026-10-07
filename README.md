@@ -179,6 +179,9 @@ O login não devolve o token no corpo. A API grava três cookies, todos `SameSit
 | GET | `/me` | Autenticado | Dados do usuário logado (inclui `schoolName` e `studentId`) |
 | POST | `/logout` | Sessão (acesso ou refresh) | Revoga a sessão e apaga os cookies |
 | POST | `/change-password` | Autenticado | Troca a **própria** senha com `currentPassword` e `newPassword`. Senha atual errada: 400 e conta para o bloqueio por tentativas. Encerra as outras sessões e mantém a atual |
+| GET | `/sessions` | Autenticado | Aparelhos conectados: sessões abertas da própria conta (`device` resumido do navegador, `createdAt`, `lastUsedAt`, `isCurrent`), a atual primeiro |
+| DELETE | `/sessions/{id}` | Autenticado | Sai de um aparelho da própria conta. A sessão atual responde 400 (use `/logout`) |
+| DELETE | `/sessions` | Autenticado | Sai de todos os outros aparelhos e mantém o atual |
 | POST | `/reset-password` | Admin, Director | Redefine a senha de **outra** pessoa: Admin, a de administradores e diretores; Diretor, a das pessoas da sua escola. Encerra todas as sessões da conta. Na própria conta responde 400 (use `/change-password`) |
 
 ### Escolas — `/api/schools`
@@ -201,6 +204,7 @@ O login não devolve o token no corpo. A API grava três cookies, todos `SameSit
 | PUT | `/{id}` | Admin (administradores e diretores), Director |
 | DELETE | `/{id}` | Admin (administradores e diretores), Director |
 | POST | `/{id}/unlock` | Admin (administradores e diretores) — desfaz o bloqueio por senha errada sem trocar a senha |
+| DELETE | `/{id}/sessions` | Admin (administradores e diretores, não a própria conta) — desconecta de todos os aparelhos sem trocar a senha |
 | POST/DELETE | `/{teacherId}/assign-class/{classId}` | Director |
 | POST/DELETE | `/{parentId}/assign-student/{studentId}` | Director |
 | POST/DELETE | `/{orientadorId}/assign-orientador-class/{classId}` | Director |
