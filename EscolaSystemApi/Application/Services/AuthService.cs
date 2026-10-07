@@ -267,10 +267,10 @@ public class AuthService(IUnitOfWork unitOfWork, IJwtService jwtService, AppDbCo
         return Result<bool>.Success(true);
     }
 
-    // Admin altera qualquer senha; Diretor só a de usuários da própria escola abaixo dele na hierarquia
+    // Admin altera a de administradores e diretores; Diretor só a de usuários da própria escola abaixo dele na hierarquia
     private static bool CanResetPasswordOf(User? requester, User target) => requester?.Role?.Name switch
     {
-        "Admin" => true,
+        "Admin" => target.Role?.Name is "Admin" or "Director",
         // Diretor: pessoas da própria escola (principal ou com vínculo ativo nela)
         "Director" => requester.SchoolId is not null
                       && (target.SchoolId == requester.SchoolId

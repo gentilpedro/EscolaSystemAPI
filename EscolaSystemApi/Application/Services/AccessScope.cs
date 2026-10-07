@@ -6,8 +6,9 @@ namespace EscolaSystemApi.Application.Services;
 
 /// <summary>
 /// Quem enxerga o quê, num lugar só. Cada método devolve só os registros que o usuário logado pode ver:
-/// Admin tudo; Diretor a própria escola; Professor e Orientador as turmas a que estão vinculados;
-/// Aluno o próprio registro; Responsável os alunos vinculados a ele. Perfil desconhecido não vê nada.
+/// Diretor a própria escola; Professor e Orientador as turmas a que estão vinculados;
+/// Aluno o próprio registro; Responsável os alunos vinculados a ele. O administrador cuida do sistema e não vê
+/// dados das escolas; ele e qualquer perfil desconhecido não veem nada.
 /// Professor, orientador e responsável não veem nada de escola desativada, mesmo com o vínculo ativo.
 /// Os services partem daqui e acrescentam Include, filtros e paginação.
 /// </summary>
@@ -17,7 +18,6 @@ public sealed class AccessScope(AppDbContext context, ICurrentUserService curren
 
     public IQueryable<Class> Classes() => currentUser.Role switch
     {
-        "Admin" => context.Classes,
         "Director" => context.Classes.Where(c => c.SchoolId == currentUser.SchoolId),
         "Teacher" => context.Classes.Where(c => c.School.IsActive && context.TeacherClasses
             .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == c.Id)),
@@ -32,7 +32,6 @@ public sealed class AccessScope(AppDbContext context, ICurrentUserService curren
 
     public IQueryable<Student> Students() => currentUser.Role switch
     {
-        "Admin" => context.Students,
         "Director" => context.Students.Where(s => s.Class.SchoolId == currentUser.SchoolId),
         "Teacher" => context.Students.Where(s => s.Class.School.IsActive && context.TeacherClasses
             .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == s.ClassId)),
@@ -48,7 +47,6 @@ public sealed class AccessScope(AppDbContext context, ICurrentUserService curren
 
     public IQueryable<Grade> Grades() => currentUser.Role switch
     {
-        "Admin" => context.Grades,
         "Director" => context.Grades.Where(g => g.Class.SchoolId == currentUser.SchoolId),
         "Teacher" => context.Grades.Where(g => g.Class.School.IsActive && context.TeacherClasses
             .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == g.ClassId)),
@@ -62,7 +60,6 @@ public sealed class AccessScope(AppDbContext context, ICurrentUserService curren
 
     public IQueryable<Attendance> Attendances() => currentUser.Role switch
     {
-        "Admin" => context.Attendances,
         "Director" => context.Attendances.Where(a => a.Class.SchoolId == currentUser.SchoolId),
         "Teacher" => context.Attendances.Where(a => a.Class.School.IsActive && context.TeacherClasses
             .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == a.ClassId)),
@@ -76,7 +73,6 @@ public sealed class AccessScope(AppDbContext context, ICurrentUserService curren
 
     public IQueryable<PendingWork> PendingWorks() => currentUser.Role switch
     {
-        "Admin" => context.PendingWorks,
         "Director" => context.PendingWorks.Where(p => p.Class.SchoolId == currentUser.SchoolId),
         "Teacher" => context.PendingWorks.Where(p => p.Class.School.IsActive && context.TeacherClasses
             .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == p.ClassId)),
@@ -91,7 +87,6 @@ public sealed class AccessScope(AppDbContext context, ICurrentUserService curren
     // Chamados seguem a turma atual do aluno
     public IQueryable<DisciplinaryCall> DisciplinaryCalls() => currentUser.Role switch
     {
-        "Admin" => context.DisciplinaryCalls,
         "Director" => context.DisciplinaryCalls.Where(d => d.Student.Class.SchoolId == currentUser.SchoolId),
         "Teacher" => context.DisciplinaryCalls.Where(d => d.Student.Class.School.IsActive && context.TeacherClasses
             .Any(tc => tc.TeacherId == currentUser.UserId && tc.ClassId == d.Student.ClassId)),

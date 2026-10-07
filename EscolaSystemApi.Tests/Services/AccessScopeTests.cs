@@ -69,10 +69,9 @@ public class AccessScopeTests
             _ => new(Context, new CurrentUserServiceMock(Guid.NewGuid(), role))
         };
 
-        // Alunos que cada perfil deve enxergar, pela regra do sistema
+        // Alunos que cada perfil deve enxergar, pela regra do sistema. O administrador cuida do sistema e não vê nada
         public Guid[] ExpectedStudents(string role) => role switch
         {
-            "Admin" => [StudentA.Id, StudentB.Id, StudentC.Id],
             "Director" => [StudentA.Id, StudentB.Id],
             "Teacher" or "Orientador" or "Student" or "Parent" => [StudentA.Id],
             _ => []
@@ -80,7 +79,6 @@ public class AccessScopeTests
 
         public Guid[] ExpectedClasses(string role) => role switch
         {
-            "Admin" => [ClassA.Id, ClassB.Id, ClassC.Id],
             "Director" => [ClassA.Id, ClassB.Id],
             "Teacher" or "Orientador" or "Student" or "Parent" => [ClassA.Id],
             _ => []

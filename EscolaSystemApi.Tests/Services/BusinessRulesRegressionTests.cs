@@ -73,6 +73,21 @@ public class BusinessRulesRegressionTests
     }
 
     [Fact]
+    public async Task ResetPassword_AdminResetsOnlyAdminsAndDirectors()
+    {
+        var context = DbContextHelper.CreateInMemoryContext();
+        var school = DbContextHelper.CreateSchool(context);
+        var admin = CreateUser(context, RoleIds.Admin, null);
+        var director = CreateUser(context, RoleIds.Director, school.Id);
+        var teacher = CreateUser(context, RoleIds.Teacher, school.Id);
+        var service = CreateAuthService(context);
+
+        (await service.ResetPasswordAsync(new ResetPasswordDto(director.Email, "Nova@1234"), admin.Id)).IsSuccess.Should().BeTrue();
+        // As pessoas da escola ficam com a direção
+        (await service.ResetPasswordAsync(new ResetPasswordDto(teacher.Email, "Nova@1234"), admin.Id)).StatusCode.Should().Be(403);
+    }
+
+    [Fact]
     public async Task ResetPassword_DirectorCannotResetUserFromOtherSchool()
     {
         var context = DbContextHelper.CreateInMemoryContext();
@@ -263,7 +278,7 @@ public class BusinessRulesRegressionTests
         var school = DbContextHelper.CreateSchool(context);
         var cls = DbContextHelper.CreateClass(context, school.Id);
         DbContextHelper.CreateStudent(context, cls.Id);
-        var service = new ClassService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
+        var service = new ClassService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id));
 
         var result = await service.DeleteAsync(cls.Id);
 
@@ -330,7 +345,7 @@ public class BusinessRulesRegressionTests
         var cls = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls.Id);
         DbContextHelper.CreateGrade(context, student.Id, cls.Id);
-        var service = new StudentService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
+        var service = new StudentService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id));
 
         var result = await service.DeleteAsync(student.Id);
 
@@ -398,7 +413,7 @@ public class BusinessRulesRegressionTests
         var cls1 = DbContextHelper.CreateClass(context, school.Id);
         var cls2 = DbContextHelper.CreateClass(context, school.Id);
         var outsider = DbContextHelper.CreateStudent(context, cls2.Id);
-        var service = new AttendanceService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
+        var service = new AttendanceService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id));
         var today = DateOnly.FromDateTime(DateTime.Today);
 
         var result = await service.BulkCreateAsync([new CreateAttendanceDto(outsider.Id, cls1.Id, today, true, null)]);
@@ -414,7 +429,7 @@ public class BusinessRulesRegressionTests
         var cls = DbContextHelper.CreateClass(context, school.Id);
         var s1 = DbContextHelper.CreateStudent(context, cls.Id);
         var s2 = DbContextHelper.CreateStudent(context, cls.Id);
-        var service = new AttendanceService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
+        var service = new AttendanceService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id));
         var today = DateOnly.FromDateTime(DateTime.Today);
 
         var result = await service.BulkCreateAsync(
@@ -493,7 +508,7 @@ public class BusinessRulesRegressionTests
         var resolved = DbContextHelper.CreateDisciplinaryCall(context, student.Id);
         resolved.Status = DisciplinaryCallStatus.Approved;
         context.SaveChanges();
-        var service = new DisciplinaryCallService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
+        var service = new DisciplinaryCallService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id));
 
         var result = await service.GetAllAsync(new PagedQuery(), new DisciplinaryCallFilter(Status: DisciplinaryCallStatus.Pending));
 

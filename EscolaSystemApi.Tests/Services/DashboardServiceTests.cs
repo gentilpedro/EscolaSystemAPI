@@ -39,7 +39,7 @@ public class DashboardServiceTests
         var student = DbContextHelper.CreateStudent(context, cls.Id);
         DbContextHelper.CreateAttendance(context, student.Id, cls.Id, DateOnly.FromDateTime(DateTime.Today));
         DbContextHelper.CreateDisciplinaryCall(context, student.Id);
-        var service = new DashboardService(context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
+        var service = new DashboardService(context, new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id));
 
         var result = await service.GetClassReportsAsync();
 

@@ -19,3 +19,10 @@ public static class RoleIds
     // Perfis que o administrador da plataforma gerencia
     public static readonly int[] Platform = [Admin, Director];
 }
+
+// Nomes dos perfis para os atributos [Authorize]
+public static class RoleNames
+{
+    // Quem trabalha ou estuda numa escola. O administrador cuida do sistema e não acessa os dados das escolas
+    public const string School = "Director,Teacher,Orientador,Student,Parent";
+}

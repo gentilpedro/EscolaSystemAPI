@@ -131,15 +131,15 @@ public class SessionSecurityTests
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var school = DbContextHelper.CreateSchool(context);
-        var teacher = DbContextHelper.CreateTeacherUser(context, school.Id);
+        var director = DbContextHelper.CreateDirectorUser(context, school.Id);
         var service = CreateAuthService(context);
-        var login = await service.LoginAsync(new LoginRequestDto(teacher.Email, "Admin@123"));
+        var login = await service.LoginAsync(new LoginRequestDto(director.Email, "Admin@123"));
         var users = new UserService(new UnitOfWork(context), context,
             new CurrentUserServiceMock(Guid.NewGuid(), "Admin"), CpfEncryptionHelper.Create());
 
-        await users.DeleteAsync(teacher.Id);
+        await users.DeleteAsync(director.Id);
 
-        context.UserSessions.Single(s => s.UserId == teacher.Id).RevokedAt.Should().NotBeNull();
+        context.UserSessions.Single(s => s.UserId == director.Id).RevokedAt.Should().NotBeNull();
         (await service.RefreshAsync(login.Data!.RefreshToken)).StatusCode.Should().Be(401);
     }
 

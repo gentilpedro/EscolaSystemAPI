@@ -2,12 +2,13 @@ using EscolaSystemApi.Application.DTOs.Attendance;
 using EscolaSystemApi.Application.Interfaces;
 using EscolaSystemApi.Application.Validators.Attendance;
 using EscolaSystemApi.Common;
+using EscolaSystemApi.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EscolaSystemApi.Controllers;
 
-[Authorize]
+[Authorize(Roles = RoleNames.School)]
 [Route("api/attendance")]
 public class AttendanceController(IAttendanceService attendanceService) : BaseApiController
 {
@@ -20,7 +21,7 @@ public class AttendanceController(IAttendanceService attendanceService) : BaseAp
         => HandleResult(await attendanceService.GetByIdAsync(id, cancellationToken));
 
     [HttpPost]
-    [Authorize(Roles = "Admin,Teacher,Director")]
+    [Authorize(Roles = "Teacher,Director")]
     public async Task<IActionResult> Create([FromBody] CreateAttendanceDto dto, CancellationToken cancellationToken)
     {
         var validation = await new CreateAttendanceValidator().ValidateAsync(dto, cancellationToken);
@@ -31,7 +32,7 @@ public class AttendanceController(IAttendanceService attendanceService) : BaseAp
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin,Teacher,Director")]
+    [Authorize(Roles = "Teacher,Director")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateAttendanceDto dto, CancellationToken cancellationToken)
     {
         var validation = await new UpdateAttendanceValidator().ValidateAsync(dto, cancellationToken);
@@ -42,7 +43,7 @@ public class AttendanceController(IAttendanceService attendanceService) : BaseAp
     }
 
     [HttpPost("bulk")]
-    [Authorize(Roles = "Admin,Teacher,Director")]
+    [Authorize(Roles = "Teacher,Director")]
     public async Task<IActionResult> BulkCreate([FromBody] List<CreateAttendanceDto> dtos, CancellationToken cancellationToken)
     {
         var validator = new CreateAttendanceValidator();

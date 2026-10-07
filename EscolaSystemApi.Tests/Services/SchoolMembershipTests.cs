@@ -67,9 +67,9 @@ public class SchoolMembershipTests
     {
         var w = new World();
 
-        var result = await w.Admin().UpdateAsync(w.Teacher.Id, w.TeacherUpdate(w.School2.Id));
+        var result = await w.Users(w.Director1, "Director").UpdateAsync(w.Teacher.Id, w.TeacherUpdate(w.School2.Id));
 
-        result.StatusCode.Should().Be(400);
+        result.StatusCode.Should().Be(403);
         w.TeacherScope().Classes().Select(c => c.Id).Should().BeEquivalentTo([w.ClassA.Id]);
     }
 
@@ -269,9 +269,10 @@ public class SchoolMembershipTests
         var w = new World();
         await w.Users(w.Director2, "Director").AddMemberAsync(w.School2.Id, w.Teacher.Email);
 
+        // O administrador não mexe nas pessoas das escolas, e a direção não promove ninguém a diretor
         var result = await w.Admin().UpdateAsync(w.Teacher.Id, w.TeacherUpdate(w.School1.Id, RoleIds.Director));
 
-        result.StatusCode.Should().Be(409);
+        result.StatusCode.Should().Be(403);
     }
 
     [Fact]

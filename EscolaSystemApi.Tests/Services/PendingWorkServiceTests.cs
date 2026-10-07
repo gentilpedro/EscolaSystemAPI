@@ -10,7 +10,7 @@ namespace EscolaSystemApi.Tests.Services;
 public class PendingWorkServiceTests
 {
     [Fact]
-    public async Task GetAllAsync_Admin_ReturnsAllWorks()
+    public async Task GetAllAsync_Admin_SeesNothing()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
@@ -26,7 +26,7 @@ public class PendingWorkServiceTests
         var result = await service.GetAllAsync(new PagedQuery());
 
         result.IsSuccess.Should().BeTrue();
-        result.Data!.Items.Should().HaveCount(2);
+        result.Data!.Items.Should().BeEmpty();
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public class PendingWorkServiceTests
         var cls = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls.Id);
 
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new PendingWorkService(uow, context, currentUser);
 
         var dto = new CreatePendingWorkDto(student.Id, cls.Id, "Trabalho de Matemática", "Resolver exercícios", DateOnly.FromDateTime(DateTime.Today.AddDays(7)));
@@ -59,7 +59,7 @@ public class PendingWorkServiceTests
         var student = DbContextHelper.CreateStudent(context, cls.Id);
         var work = DbContextHelper.CreatePendingWork(context, student.Id, cls.Id);
 
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new PendingWorkService(uow, context, currentUser);
 
         var result = await service.MarkAsDeliveredAsync(work.Id);
@@ -78,7 +78,7 @@ public class PendingWorkServiceTests
         var student = DbContextHelper.CreateStudent(context, cls.Id);
         var work = DbContextHelper.CreatePendingWork(context, student.Id, cls.Id);
 
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new PendingWorkService(uow, context, currentUser);
 
         await service.MarkAsDeliveredAsync(work.Id);
@@ -119,7 +119,7 @@ public class PendingWorkServiceTests
         var cls1 = DbContextHelper.CreateClass(context, school.Id);
         var cls2 = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls1.Id);
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new PendingWorkService(uow, context, currentUser);
 
         var dto = new CreatePendingWorkDto(student.Id, cls2.Id, "Trabalho", "Desc", DateOnly.FromDateTime(DateTime.Today.AddDays(7)));

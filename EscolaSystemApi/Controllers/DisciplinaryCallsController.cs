@@ -2,13 +2,14 @@ using EscolaSystemApi.Application.DTOs.DisciplinaryCalls;
 using EscolaSystemApi.Application.Interfaces;
 using EscolaSystemApi.Application.Validators.DisciplinaryCalls;
 using EscolaSystemApi.Common;
+using EscolaSystemApi.Domain.Entities;
 using EscolaSystemApi.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EscolaSystemApi.Controllers;
 
-[Authorize]
+[Authorize(Roles = RoleNames.School)]
 [Route("api/disciplinary-calls")]
 public class DisciplinaryCallsController(IDisciplinaryCallService disciplinaryCallService) : BaseApiController
 {
@@ -28,7 +29,7 @@ public class DisciplinaryCallsController(IDisciplinaryCallService disciplinaryCa
         => HandleResult(await disciplinaryCallService.GetByIdAsync(id, cancellationToken));
 
     [HttpPost]
-    [Authorize(Roles = "Admin,Teacher,Director,Orientador")]
+    [Authorize(Roles = "Teacher,Director,Orientador")]
     public async Task<IActionResult> Create([FromBody] CreateDisciplinaryCallDto dto, CancellationToken cancellationToken)
     {
         var validation = await new CreateDisciplinaryCallValidator().ValidateAsync(dto, cancellationToken);
@@ -39,7 +40,7 @@ public class DisciplinaryCallsController(IDisciplinaryCallService disciplinaryCa
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin,Teacher,Director,Orientador")]
+    [Authorize(Roles = "Teacher,Director,Orientador")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateDisciplinaryCallDto dto, CancellationToken cancellationToken)
     {
         var validation = await new UpdateDisciplinaryCallValidator().ValidateAsync(dto, cancellationToken);
@@ -50,7 +51,7 @@ public class DisciplinaryCallsController(IDisciplinaryCallService disciplinaryCa
     }
 
     [HttpPost("{id:guid}/approve")]
-    [Authorize(Roles = "Admin,Director,Orientador")]
+    [Authorize(Roles = "Director,Orientador")]
     public async Task<IActionResult> Approve(Guid id, [FromBody] ResolveCallDto dto, CancellationToken cancellationToken)
     {
         var validation = await new ResolveCallValidator().ValidateAsync(dto, cancellationToken);
@@ -61,7 +62,7 @@ public class DisciplinaryCallsController(IDisciplinaryCallService disciplinaryCa
     }
 
     [HttpPost("{id:guid}/reject")]
-    [Authorize(Roles = "Admin,Director,Orientador")]
+    [Authorize(Roles = "Director,Orientador")]
     public async Task<IActionResult> Reject(Guid id, [FromBody] ResolveCallDto dto, CancellationToken cancellationToken)
     {
         var validation = await new ResolveCallValidator().ValidateAsync(dto, cancellationToken);

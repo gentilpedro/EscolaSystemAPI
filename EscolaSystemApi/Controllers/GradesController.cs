@@ -2,12 +2,13 @@ using EscolaSystemApi.Application.DTOs.Grades;
 using EscolaSystemApi.Application.Interfaces;
 using EscolaSystemApi.Application.Validators.Grades;
 using EscolaSystemApi.Common;
+using EscolaSystemApi.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EscolaSystemApi.Controllers;
 
-[Authorize]
+[Authorize(Roles = RoleNames.School)]
 public class GradesController(IGradeService gradeService) : BaseApiController
 {
     [HttpGet]
@@ -19,7 +20,7 @@ public class GradesController(IGradeService gradeService) : BaseApiController
         => HandleResult(await gradeService.GetByIdAsync(id, cancellationToken));
 
     [HttpPost]
-    [Authorize(Roles = "Admin,Teacher,Director")]
+    [Authorize(Roles = "Teacher,Director")]
     public async Task<IActionResult> Create([FromBody] CreateGradeDto dto, CancellationToken cancellationToken)
     {
         var validation = await new CreateGradeValidator().ValidateAsync(dto, cancellationToken);
@@ -30,7 +31,7 @@ public class GradesController(IGradeService gradeService) : BaseApiController
     }
 
     [HttpPut("{id:guid}")]
-    [Authorize(Roles = "Admin,Teacher,Director")]
+    [Authorize(Roles = "Teacher,Director")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateGradeDto dto, CancellationToken cancellationToken)
     {
         var validation = await new UpdateGradeValidator().ValidateAsync(dto, cancellationToken);
@@ -41,7 +42,7 @@ public class GradesController(IGradeService gradeService) : BaseApiController
     }
 
     [HttpDelete("{id:guid}")]
-    [Authorize(Roles = "Admin,Teacher,Director")]
+    [Authorize(Roles = "Teacher,Director")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
         => HandleResult(await gradeService.DeleteAsync(id, cancellationToken));
 }

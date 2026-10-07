@@ -30,7 +30,7 @@ public class BusinessRulesIssue10Tests
     }
 
     [Fact]
-    public async Task AdminUpdate_KeepingTeacherRole_DeactivatesNormally()
+    public async Task AdminUpdate_Teacher_IsForbidden()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var school = DbContextHelper.CreateSchool(context);
@@ -41,12 +41,12 @@ public class BusinessRulesIssue10Tests
         var result = await service.UpdateAsync(teacher.Id,
             new UpdateUserDto(teacher.Name, teacher.Email, RoleIds.Teacher, school.Id, false));
 
-        result.IsSuccess.Should().BeTrue();
-        result.Data!.IsActive.Should().BeFalse();
+        // As pessoas da escola são da direção: o administrador nem desativa
+        result.StatusCode.Should().Be(403);
     }
 
     [Fact]
-    public async Task AdminUpdate_PromotingTeacherToDirector_IsAllowed()
+    public async Task AdminUpdate_PromotingTeacherToDirector_IsForbidden()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var school = DbContextHelper.CreateSchool(context);
@@ -57,7 +57,7 @@ public class BusinessRulesIssue10Tests
         var result = await service.UpdateAsync(teacher.Id,
             new UpdateUserDto(teacher.Name, teacher.Email, RoleIds.Director, school.Id, true));
 
-        result.IsSuccess.Should().BeTrue();
+        result.StatusCode.Should().Be(403);
     }
 
     // ---------- Nota duplicada e período ----------
@@ -70,7 +70,7 @@ public class BusinessRulesIssue10Tests
         var cls = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls.Id);
         DbContextHelper.CreateGrade(context, student.Id, cls.Id); // Matemática, 1° Trimestre
-        var service = new GradeService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
+        var service = new GradeService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id));
 
         // Mesma matéria com outra caixa e o bimestre com "º" em vez de "°"
         var result = await service.CreateAsync(new CreateGradeDto(student.Id, cls.Id, " matemática ", 9, "1º Trimestre"));
@@ -86,7 +86,7 @@ public class BusinessRulesIssue10Tests
         var cls = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls.Id);
         DbContextHelper.CreateGrade(context, student.Id, cls.Id);
-        var service = new GradeService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
+        var service = new GradeService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id));
 
         var result = await service.CreateAsync(new CreateGradeDto(student.Id, cls.Id, "Matemática", 7, "2º Trimestre"));
 
@@ -101,7 +101,7 @@ public class BusinessRulesIssue10Tests
         var cls = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls.Id);
         DbContextHelper.CreateGrade(context, student.Id, cls.Id);
-        var service = new GradeService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
+        var service = new GradeService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id));
         var other = await service.CreateAsync(new CreateGradeDto(student.Id, cls.Id, "Matemática", 7, "2º Trimestre"));
 
         var result = await service.UpdateAsync(other.Data!.Id, new UpdateGradeDto("Matemática", 7, "1º Trimestre"));
@@ -117,7 +117,7 @@ public class BusinessRulesIssue10Tests
         var cls = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls.Id);
         var grade = DbContextHelper.CreateGrade(context, student.Id, cls.Id);
-        var service = new GradeService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
+        var service = new GradeService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id));
 
         var result = await service.UpdateAsync(grade.Id, new UpdateGradeDto("Matemática", 9.5m, "1º Trimestre"));
 
@@ -152,7 +152,7 @@ public class BusinessRulesIssue10Tests
         var inactive = DbContextHelper.CreateStudent(context, cls.Id);
         inactive.IsActive = false;
         context.SaveChanges();
-        var service = new StudentService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Admin"));
+        var service = new StudentService(new UnitOfWork(context), context, new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id));
 
         var active = await service.GetAllAsync(new PagedQuery(), cls.Id, isActive: true);
         var all = await service.GetAllAsync(new PagedQuery(), cls.Id);

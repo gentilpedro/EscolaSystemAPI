@@ -10,7 +10,7 @@ namespace EscolaSystemApi.Tests.Services;
 public class GradeServiceTests
 {
     [Fact]
-    public async Task GetAllAsync_Admin_ReturnsAllGrades()
+    public async Task GetAllAsync_Admin_SeesNothing()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
@@ -26,7 +26,7 @@ public class GradeServiceTests
         var result = await service.GetAllAsync(new PagedQuery());
 
         result.IsSuccess.Should().BeTrue();
-        result.Data!.Items.Should().HaveCount(2);
+        result.Data!.Items.Should().BeEmpty();
     }
 
     [Fact]
@@ -85,7 +85,7 @@ public class GradeServiceTests
         var cls = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls.Id);
 
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new GradeService(uow, context, currentUser);
 
         var dto = new CreateGradeDto(student.Id, cls.Id, "Matemática", 9.5m, "1° Trimestre");
@@ -133,7 +133,7 @@ public class GradeServiceTests
     }
 
     [Fact]
-    public async Task UpdateAsync_Admin_UpdatesGrade()
+    public async Task UpdateAsync_Director_UpdatesGrade()
     {
         var context = DbContextHelper.CreateInMemoryContext();
         var uow = new UnitOfWork(context);
@@ -141,7 +141,7 @@ public class GradeServiceTests
         var cls = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls.Id);
         var grade = DbContextHelper.CreateGrade(context, student.Id, cls.Id);
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new GradeService(uow, context, currentUser);
 
         var dto = new UpdateGradeDto("Português", 7.5m, "2° Trimestre");
@@ -182,7 +182,7 @@ public class GradeServiceTests
         var cls1 = DbContextHelper.CreateClass(context, school.Id);
         var cls2 = DbContextHelper.CreateClass(context, school.Id);
         var student = DbContextHelper.CreateStudent(context, cls1.Id);
-        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Admin");
+        var currentUser = new CurrentUserServiceMock(Guid.NewGuid(), "Director", school.Id);
         var service = new GradeService(uow, context, currentUser);
 
         var dto = new CreateGradeDto(student.Id, cls2.Id, "Matemática", 9.0m, "1° Trimestre");

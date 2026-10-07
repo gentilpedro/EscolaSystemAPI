@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace EscolaSystemApi.Controllers;
 
 // Pessoas da escola: professor, orientador e responsável podem estar em várias escolas
-[Authorize(Roles = "Admin,Director")]
+[Authorize(Roles = "Director")]
 [Route("api/schools/{schoolId:guid}/members")]
 public class SchoolMembersController(IUserService userService) : BaseApiController
 {
