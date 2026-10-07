@@ -81,6 +81,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPendingWorkService, PendingWorkService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IAuditService, AuditService>();
+        services.AddScoped<ITicketService, TicketService>();
 
         return services;
     }

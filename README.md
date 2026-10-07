@@ -287,6 +287,19 @@ Status: `1` Pendente, `2` Aprovado, `3` Rejeitado. A resposta inclui o autor (`c
 
 A API guarda um registro por aluno; o `assignmentId` liga os registros do mesmo trabalho da turma.
 
+### Tickets — `/api/tickets`
+
+Canal da direção da escola com a administração do sistema: bug, melhoria, dúvida ou outro.
+
+| Método | Rota | Auth | Descrição |
+|---|---|---|---|
+| GET | `/?status=&type=&schoolId=` | Admin (todos), Director (os da própria escola) | Lista paginada, última atividade primeiro, com `messageCount` |
+| GET | `/summary` | Admin | Tickets abertos ou em andamento por tipo (`bugs`, `improvements`, `questions`, `others`) e por situação (`open`, `inProgress`) |
+| GET | `/{id}` | Admin, Director (da escola) | Ticket com a descrição e as mensagens (`fromAdministration` marca as respostas da administração) |
+| POST | `/` | Director | Abre um ticket da própria escola: `type` (1 bug, 2 melhoria, 3 dúvida, 4 outro), `title` (5–200), `description` (10–4000) |
+| POST | `/{id}/messages` | Admin, Director (da escola) | Responde. A primeira resposta da administração passa o ticket para "Em andamento"; a direção respondendo um ticket resolvido o reabre. Ticket fechado: 400 |
+| PUT | `/{id}/status` | Admin | Muda a situação: 1 aberto, 2 em andamento, 3 resolvido, 4 fechado |
+
 ### Registro de atividades — `/api/audit`
 
 | Método | Rota | Auth | Descrição |
