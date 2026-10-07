@@ -5,7 +5,9 @@ public sealed record AdminStatsDto(
     int ActiveSchools,
     int TotalUsers,
     int TotalClasses,
-    int TotalStudents);
+    int TotalStudents,
+    // Administradores e diretores bloqueados agora por senha errada
+    int LockedAccounts);
 
 // Totais já restritos ao que o usuário logado pode ver
 public sealed record DashboardStatsDto(

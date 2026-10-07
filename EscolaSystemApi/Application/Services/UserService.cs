@@ -20,7 +20,7 @@ public class UserService(
     // O administrador cuida do sistema: só gerencia administradores e diretores, nunca as pessoas das escolas
     private const string PlatformOnlyMessage = "O administrador gerencia apenas administradores e diretores.";
 
-    public async Task<Result<PagedResult<UserListDto>>> GetAllAsync(PagedQuery query, Guid? schoolId = null, int? roleId = null, string? search = null, bool? isActive = null, CancellationToken cancellationToken = default)
+    public async Task<Result<PagedResult<UserListDto>>> GetAllAsync(PagedQuery query, Guid? schoolId = null, int? roleId = null, string? search = null, bool? isActive = null, bool? locked = null, CancellationToken cancellationToken = default)
     {
         var filtered = ScopedUsers();
 
@@ -30,6 +30,13 @@ public class UserService(
             filtered = filtered.Where(u => u.RoleId == roleId.Value);
         if (isActive.HasValue)
             filtered = filtered.Where(u => u.IsActive == isActive.Value);
+        if (locked.HasValue)
+        {
+            var now = DateTime.UtcNow;
+            filtered = locked.Value
+                ? filtered.Where(u => u.LockoutEndsAt > now)
+                : filtered.Where(u => u.LockoutEndsAt == null || u.LockoutEndsAt <= now);
+        }
         if (!string.IsNullOrWhiteSpace(search))
         {
             // Trecho do nome ou do e-mail, sem diferenciar maiúsculas
@@ -494,7 +501,26 @@ public class UserService(
                 .Select(m => new SchoolRefDto(m.SchoolId, m.School?.Name ?? string.Empty))
                 .DistinctBy(sr => sr.Id)
                 .OrderBy(sr => sr.Name)
-                .ToList());
+                .ToList(),
+            u.LockoutEndsAt > DateTime.UtcNow ? u.LockoutEndsAt : null);
+    }
+
+    /// <summary>
+    /// Desfaz o bloqueio por senha errada sem trocar a senha. Só o admin, e só de administradores e diretores.
+    /// </summary>
+    public async Task<Result<bool>> UnlockAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var user = await context.Users.FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+        if (user is null)
+            return Result<bool>.NotFound("Usuário não encontrado.");
+
+        if (!IsAdmin || !RoleIds.Platform.Contains(user.RoleId))
+            return Result<bool>.Forbidden(PlatformOnlyMessage);
+
+        user.FailedLoginAttempts = 0;
+        user.LockoutEndsAt = null;
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return Result<bool>.NoContent();
     }
 
     // ---------- Vínculos com a escola ----------

@@ -195,16 +195,17 @@ O login não devolve o token no corpo. A API grava três cookies, todos `SameSit
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/?schoolId=&roleId=&search=&isActive=` | Admin (só administradores e diretores, sem CPF), Director — `search` procura no nome e no e-mail, sem diferenciar maiúsculas |
+| GET | `/?schoolId=&roleId=&search=&isActive=&locked=` | Admin (só administradores e diretores, sem CPF), Director — `search` procura no nome e no e-mail, sem diferenciar maiúsculas; `locked=true` traz só quem está bloqueado agora por senha errada |
 | GET | `/{id}` | Admin (administradores e diretores), Director |
 | POST | `/` | Admin (administradores e diretores), Director |
 | PUT | `/{id}` | Admin (administradores e diretores), Director |
 | DELETE | `/{id}` | Admin (administradores e diretores), Director |
+| POST | `/{id}/unlock` | Admin (administradores e diretores) — desfaz o bloqueio por senha errada sem trocar a senha |
 | POST/DELETE | `/{teacherId}/assign-class/{classId}` | Director |
 | POST/DELETE | `/{parentId}/assign-student/{studentId}` | Director |
 | POST/DELETE | `/{orientadorId}/assign-orientador-class/{classId}` | Director |
 
-A listagem retorna `classIds` (turmas de professor/orientador), `studentIds` (filhos do responsável) e `schools` (escolas com vínculo ativo). O filtro `schoolId` e o escopo do diretor consideram todas as escolas da pessoa. No `PUT`, `cpf: null` mantém o CPF atual e `cpf: ""` remove.
+A listagem retorna `classIds` (turmas de professor/orientador), `studentIds` (filhos do responsável), `schools` (escolas com vínculo ativo) e `lockedUntil` (até quando a conta está bloqueada por senha errada; `null` se não está). O filtro `schoolId` e o escopo do diretor consideram todas as escolas da pessoa. No `PUT`, `cpf: null` mantém o CPF atual e `cpf: ""` remove.
 
 ### Pessoas da escola — `/api/schools/{schoolId}/members`
 
@@ -286,7 +287,7 @@ A API guarda um registro por aluno; o `assignmentId` liga os registros do mesmo 
 
 | Método | Rota | Auth | Descrição |
 |---|---|---|---|
-| GET | `/api/admin/stats` | Admin | Totais da plataforma |
+| GET | `/api/admin/stats` | Admin | Totais da plataforma, incluindo `lockedAccounts` (administradores e diretores bloqueados agora) |
 | GET | `/api/dashboard/stats` | Perfis da escola | Totais no escopo do usuário: turmas, alunos, funcionários, ocorrências pendentes, trabalhos pendentes, média geral e % de presença |
 | GET | `/api/reports/classes?schoolId=` | Director, Teacher, Orientador | Por turma: alunos, média, % de presença e ocorrências |
 

@@ -15,7 +15,9 @@ public sealed record UserListDto(
     IReadOnlyList<Guid>? ClassIds = null,
     IReadOnlyList<Guid>? StudentIds = null,
     // Escolas em que a pessoa tem vínculo ativo (professor, orientador e responsável podem ter várias)
-    IReadOnlyList<SchoolRefDto>? Schools = null
+    IReadOnlyList<SchoolRefDto>? Schools = null,
+    // Até quando a conta fica bloqueada por senha errada; null quando não está bloqueada
+    DateTime? LockedUntil = null
 );
 
 public sealed record SchoolRefDto(Guid Id, string Name);
