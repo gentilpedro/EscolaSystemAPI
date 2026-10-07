@@ -21,6 +21,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<SchoolMembership> SchoolMemberships => Set<SchoolMembership>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<Ticket> Tickets => Set<Ticket>();
+    public DbSet<TicketMessage> TicketMessages => Set<TicketMessage>();
 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
