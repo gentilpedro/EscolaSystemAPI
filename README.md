@@ -287,6 +287,16 @@ Status: `1` Pendente, `2` Aprovado, `3` Rejeitado. A resposta inclui o autor (`c
 
 A API guarda um registro por aluno; o `assignmentId` liga os registros do mesmo trabalho da turma.
 
+### Registro de atividades — `/api/audit`
+
+| Método | Rota | Auth | Descrição |
+|---|---|---|---|
+| GET | `/?from=&to=&action=&actorId=&targetId=` | Admin | Ações administrativas, mais recentes primeiro, paginadas. `to` é exclusivo |
+
+Cada ação grava quem fez (`actorName`), a ação (`action`), o alvo (`targetType`, `targetName`) e o que mudou (`details`, sem senha nem CPF), com os nomes como eram na hora. Ações: `school.created`, `school.updated`, `school.deactivated`, `school.reactivated`, `school.deleted`, `user.created`, `user.updated`, `user.role_changed`, `user.deactivated`, `user.reactivated`, `user.password_reset`, `user.unlocked`, `user.sessions_revoked`, `user.joined_school`, `user.left_school`.
+
+O que a direção faz com professores, orientadores, responsáveis e alunos também fica gravado, mas a consulta do Admin traz só o que envolve escolas, administradores e diretores.
+
 ### Dashboard e relatórios
 
 | Método | Rota | Auth | Descrição |

@@ -121,6 +121,8 @@ public class UserService(
         await unitOfWork.Repository<User>().AddAsync(user, cancellationToken);
         if (user.SchoolId is { } newSchoolId)
             context.SchoolMemberships.Add(new SchoolMembership { UserId = user.Id, SchoolId = newSchoolId });
+        await AuditTrail.RecordAsync(context, currentUser.UserId, AuditActions.UserCreated, user,
+            $"Perfil: {AuditTrail.RoleLabel(user.RoleId)}", cancellationToken: cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         return await GetByIdAsync(user.Id, cancellationToken) is { IsSuccess: true } r
@@ -208,6 +210,8 @@ public class UserService(
                 return studentCheck;
         }
 
+        var before = (user.Name, user.Email, user.RoleId, user.SchoolId, user.IsActive, user.Phone, user.CpfHash);
+
         // Cpf nulo mantém o atual; string vazia remove
         if (dto.Cpf is not null)
         {
@@ -236,6 +240,20 @@ public class UserService(
         user.IsActive = dto.IsActive;
         user.Phone = dto.Phone;
         user.UpdatedAt = DateTime.UtcNow;
+
+        var details = AuditTrail.Join(
+            AuditTrail.Changes(
+                ("Nome", before.Name, user.Name), ("E-mail", before.Email, user.Email),
+                ("Perfil", AuditTrail.RoleLabel(before.RoleId), AuditTrail.RoleLabel(user.RoleId)),
+                ("Situação", AuditTrail.ActiveLabel(before.IsActive), AuditTrail.ActiveLabel(user.IsActive))),
+            AuditTrail.Changed("Escola alterada", before.SchoolId != user.SchoolId),
+            AuditTrail.Changed("Telefone alterado", before.Phone != user.Phone),
+            AuditTrail.Changed("CPF alterado", before.CpfHash != user.CpfHash));
+        var action = before.IsActive != user.IsActive
+            ? user.IsActive ? AuditActions.UserReactivated : AuditActions.UserDeactivated
+            : before.RoleId != user.RoleId ? AuditActions.UserRoleChanged : AuditActions.UserUpdated;
+        if (details is not null)
+            await AuditTrail.RecordAsync(context, currentUser.UserId, action, user, details, cancellationToken: cancellationToken);
 
         // A escola principal sempre tem vínculo ativo; a que deixou de ser (diretor ou aluno mudando de escola, admin) é encerrada
         if (dto.IsActive && user.SchoolId is { } currentSchoolId)
@@ -277,6 +295,7 @@ public class UserService(
 
         // Remoção lógica: preserva o histórico de notas, chamadas e ocorrências
         user.IsActive = false;
+        await AuditTrail.RecordAsync(context, currentUser.UserId, AuditActions.UserDeactivated, user, cancellationToken: cancellationToken);
         user.UpdatedAt = DateTime.UtcNow;
         unitOfWork.Repository<User>().Update(user);
         // Conta desativada perde as sessões abertas, inclusive a renovação
@@ -429,6 +448,9 @@ public class UserService(
         return Result<bool>.NoContent();
     }
 
+    private async Task<string> SchoolNameAsync(Guid schoolId, CancellationToken cancellationToken) =>
+        await context.Schools.Where(s => s.Id == schoolId).Select(s => s.Name).FirstOrDefaultAsync(cancellationToken) ?? "(escola removida)";
+
     private const string LastAdminMessage = "É preciso manter pelo menos um administrador ativo. Cadastre ou ative outro administrador antes.";
 
     private async Task<bool> IsLastActiveAdminAsync(Guid adminId, CancellationToken cancellationToken) =>
@@ -519,6 +541,7 @@ public class UserService(
 
         user.FailedLoginAttempts = 0;
         user.LockoutEndsAt = null;
+        await AuditTrail.RecordAsync(context, currentUser.UserId, AuditActions.UserUnlocked, user, cancellationToken: cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<bool>.NoContent();
     }
@@ -540,6 +563,7 @@ public class UserService(
             return Result<bool>.BadRequest("Para a própria conta, use Aparelhos conectados em Configurações.");
 
         await UserSessions.RevokeAllAsync(context, user.Id, cancellationToken: cancellationToken);
+        await AuditTrail.RecordAsync(context, currentUser.UserId, AuditActions.UserSessionsRevoked, user, cancellationToken: cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<bool>.NoContent();
     }
@@ -571,6 +595,8 @@ public class UserService(
 
         await SchoolMembers.EnsureActiveAsync(context, user.Id, schoolId, cancellationToken);
         user.SchoolId ??= schoolId;
+        await AuditTrail.RecordAsync(context, currentUser.UserId, AuditActions.UserJoinedSchool, user,
+            $"Escola: {await SchoolNameAsync(schoolId, cancellationToken)}", schoolId, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         return await GetByIdAsync(user.Id, cancellationToken);
@@ -603,6 +629,11 @@ public class UserService(
             user.IsActive = false;
             await UserSessions.RevokeAllAsync(context, user.Id, cancellationToken: cancellationToken);
         }
+
+        await AuditTrail.RecordAsync(context, currentUser.UserId, AuditActions.UserLeftSchool, user,
+            AuditTrail.Join($"Escola: {await SchoolNameAsync(schoolId, cancellationToken)}",
+                remaining.Count == 0 ? "Conta desativada: não está em outra escola" : null),
+            schoolId, cancellationToken);
 
         user.UpdatedAt = DateTime.UtcNow;
         await unitOfWork.SaveChangesAsync(cancellationToken);
