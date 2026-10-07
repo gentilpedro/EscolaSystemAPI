@@ -17,7 +17,9 @@ public sealed record UserListDto(
     // Escolas em que a pessoa tem vínculo ativo (professor, orientador e responsável podem ter várias)
     IReadOnlyList<SchoolRefDto>? Schools = null,
     // Até quando a conta fica bloqueada por senha errada; null quando não está bloqueada
-    DateTime? LockedUntil = null
+    DateTime? LockedUntil = null,
+    // Último login ou renovação de sessão; null quando nunca entrou. Vem só para o admin
+    DateTime? LastAccessAt = null
 );
 
 public sealed record SchoolRefDto(Guid Id, string Name);

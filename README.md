@@ -198,7 +198,7 @@ O login não devolve o token no corpo. A API grava três cookies, todos `SameSit
 
 | Método | Rota | Auth |
 |---|---|---|
-| GET | `/?schoolId=&roleId=&search=&isActive=&locked=` | Admin (só administradores e diretores, sem CPF), Director — `search` procura no nome e no e-mail, sem diferenciar maiúsculas; `locked=true` traz só quem está bloqueado agora por senha errada |
+| GET | `/?schoolId=&roleId=&search=&isActive=&locked=&sort=` | Admin (só administradores e diretores, sem CPF), Director — `search` procura no nome e no e-mail, sem diferenciar maiúsculas; `locked=true` traz só quem está bloqueado agora por senha errada; `sort=lastAccess` (Admin) ordena por último acesso, quem nunca entrou primeiro |
 | GET | `/{id}` | Admin (administradores e diretores), Director |
 | POST | `/` | Admin (administradores e diretores), Director |
 | PUT | `/{id}` | Admin (administradores e diretores), Director |
@@ -209,7 +209,7 @@ O login não devolve o token no corpo. A API grava três cookies, todos `SameSit
 | POST/DELETE | `/{parentId}/assign-student/{studentId}` | Director |
 | POST/DELETE | `/{orientadorId}/assign-orientador-class/{classId}` | Director |
 
-A listagem retorna `classIds` (turmas de professor/orientador), `studentIds` (filhos do responsável), `schools` (escolas com vínculo ativo) e `lockedUntil` (até quando a conta está bloqueada por senha errada; `null` se não está). O filtro `schoolId` e o escopo do diretor consideram todas as escolas da pessoa. No `PUT`, `cpf: null` mantém o CPF atual e `cpf: ""` remove.
+A listagem retorna `classIds` (turmas de professor/orientador), `studentIds` (filhos do responsável), `schools` (escolas com vínculo ativo) `lockedUntil` (até quando a conta está bloqueada por senha errada; `null` se não está) e, para o Admin, `lastAccessAt` (último login ou renovação de sessão; `null` se nunca entrou). O filtro `schoolId` e o escopo do diretor consideram todas as escolas da pessoa. No `PUT`, `cpf: null` mantém o CPF atual e `cpf: ""` remove.
 
 ### Pessoas da escola — `/api/schools/{schoolId}/members`
 

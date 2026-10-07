@@ -14,8 +14,8 @@ public class UsersController(IUserService userService) : BaseApiController
     [HttpGet]
     public async Task<IActionResult> GetAll(
         [FromQuery] PagedQuery query, [FromQuery] Guid? schoolId, [FromQuery] int? roleId,
-        [FromQuery] string? search, [FromQuery] bool? isActive, [FromQuery] bool? locked, CancellationToken cancellationToken)
-        => HandleResult(await userService.GetAllAsync(query, schoolId, roleId, search, isActive, locked, cancellationToken));
+        [FromQuery] string? search, [FromQuery] bool? isActive, [FromQuery] bool? locked, [FromQuery] string? sort, CancellationToken cancellationToken)
+        => HandleResult(await userService.GetAllAsync(query, schoolId, roleId, search, isActive, locked, sort, cancellationToken));
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
