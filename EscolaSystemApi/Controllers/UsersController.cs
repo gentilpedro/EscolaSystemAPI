@@ -14,8 +14,8 @@ public class UsersController(IUserService userService) : BaseApiController
     [HttpGet]
     public async Task<IActionResult> GetAll(
         [FromQuery] PagedQuery query, [FromQuery] Guid? schoolId, [FromQuery] int? roleId,
-        [FromQuery] string? search, [FromQuery] bool? isActive, CancellationToken cancellationToken)
-        => HandleResult(await userService.GetAllAsync(query, schoolId, roleId, search, isActive, cancellationToken));
+        [FromQuery] string? search, [FromQuery] bool? isActive, [FromQuery] bool? locked, CancellationToken cancellationToken)
+        => HandleResult(await userService.GetAllAsync(query, schoolId, roleId, search, isActive, locked, cancellationToken));
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
@@ -44,6 +44,12 @@ public class UsersController(IUserService userService) : BaseApiController
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
         => HandleResult(await userService.DeleteAsync(id, cancellationToken));
+
+    // Desbloqueio por senha errada sem trocar a senha
+    [HttpPost("{id:guid}/unlock")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Unlock(Guid id, CancellationToken cancellationToken)
+        => HandleResult(await userService.UnlockAsync(id, cancellationToken));
 
     // Vínculos com turmas e alunos são da direção da escola
     [HttpPost("{teacherId:guid}/assign-class/{classId:guid}")]

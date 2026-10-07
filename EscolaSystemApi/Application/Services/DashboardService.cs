@@ -20,7 +20,9 @@ public class DashboardService(AppDbContext context, ICurrentUserService currentU
             await context.Schools.CountAsync(s => s.IsActive, cancellationToken),
             await context.Users.CountAsync(u => u.IsActive, cancellationToken),
             await context.Classes.CountAsync(c => c.IsActive, cancellationToken),
-            await context.Students.CountAsync(s => s.IsActive, cancellationToken));
+            await context.Students.CountAsync(s => s.IsActive, cancellationToken),
+            await context.Users.CountAsync(u => (u.RoleId == RoleIds.Admin || u.RoleId == RoleIds.Director)
+                                                && u.LockoutEndsAt > DateTime.UtcNow, cancellationToken));
 
         return Result<AdminStatsDto>.Success(stats);
     }
